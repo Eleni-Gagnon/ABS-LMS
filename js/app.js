@@ -637,8 +637,11 @@ function renderCourseLibrary(c){
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${cat.desc}</div>
         ${catCourses.length?`<div class="grid3" id="catgrid-${cat.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}">${catCourses.map(co=>courseCardHTML(co)).join('')}</div>`
-        :`<div style="padding:20px;background:var(--surface2);border:1px dashed var(--border2);border-radius:var(--radius-lg);text-align:center;color:var(--text3);font-size:13px">
-            No courses yet — <span style="color:var(--accent);cursor:pointer;font-weight:500" onclick="openAddCourseToCat('${cat.name.replace(/'/g,"\\'")}')">add one</span>
+        :`<div class="empty-state">
+            <div class="empty-state-icon">🗂️</div>
+            <div class="empty-state-title">No courses in ${cat.name} yet</div>
+            <div class="empty-state-sub">Add your first course to this category to get your team learning.</div>
+            <button class="btn btn-primary btn-sm" onclick="openAddCourseToCat('${cat.name.replace(/'/g,"\\'")}')">+ Add Course</button>
           </div>`}
       </div>`;
     }).join('')}
@@ -851,6 +854,7 @@ function filterCourses(search='', cat=''){
   const s=(search||'').toLowerCase();
   const selCat=cat||document.getElementById('catSelect')?.value||'';
   const sections=document.querySelectorAll('.cat-section');
+  let totalVisible=0;
   sections.forEach(sec=>{
     const secCat=sec.dataset.cat;
     if(selCat && secCat!==selCat){sec.style.display='none';return;}
@@ -863,7 +867,25 @@ function filterCourses(search='', cat=''){
       if(show) anyVisible=true;
     });
     sec.style.display=anyVisible?'':'none';
+    if(anyVisible) totalVisible++;
   });
+  // show/hide no-results message
+  let noResults=document.getElementById('courseNoResults');
+  if(!noResults){
+    noResults=document.createElement('div');
+    noResults.id='courseNoResults';
+    noResults.className='empty-state';
+    noResults.style.marginTop='8px';
+    document.getElementById('catView')?.after(noResults);
+  }
+  if(totalVisible===0 && s){
+    noResults.innerHTML=`<div class="empty-state-icon">🔍</div>
+      <div class="empty-state-title">No courses match "${search}"</div>
+      <div class="empty-state-sub">Try a different keyword or <span style="color:var(--accent);cursor:pointer;font-weight:500" onclick="document.querySelector('.search-input input').value='';filterCourses('')">clear the search</span>.</div>`;
+    noResults.style.display='';
+  } else {
+    noResults.style.display='none';
+  }
 }
 
 function courseCardHTML(co){
@@ -2320,10 +2342,10 @@ function openPersonModal(name){
     <div id="pm-activity" style="display:none">
       ${(()=>{
         const activity = getPersonActivity(l.name);
-        if(!activity.length) return `<div class="empty" style="padding:24px 0">
-          <div class="empty-icon">📋</div>
-          <div class="empty-title">No activity yet</div>
-          <div style="font-size:13px">Activity will appear here once ${l.name.split(' ')[0]} starts using the LMS.</div>
+        if(!activity.length) return `<div class="empty-state" style="margin-top:8px">
+          <div class="empty-state-icon">🕐</div>
+          <div class="empty-state-title">No activity yet</div>
+          <div class="empty-state-sub">Activity will appear here once ${l.name.split(' ')[0]} starts a course.</div>
         </div>`;
         return activity.map(a=>`
         <div style="display:flex;gap:12px;padding:10px 0;border-bottom:1px solid var(--border)">
@@ -2656,7 +2678,11 @@ function renderMyCourses(c){
   const myCourses=allOrdered.filter(co=>assignedIds.includes(co.id));
 
   if(!myCourses.length){
-    c.innerHTML=`<div class="empty"><div class="empty-icon">📚</div><div class="empty-title">No courses assigned yet</div><div style="font-size:13px">Your manager will assign courses to you soon.</div></div>`;
+    c.innerHTML=`<div class="empty-state" style="margin-top:32px">
+      <div class="empty-state-icon">📚</div>
+      <div class="empty-state-title">No courses assigned yet</div>
+      <div class="empty-state-sub">Your manager will assign courses to you soon. Check back here to start learning!</div>
+    </div>`;
     return;
   }
 
@@ -3165,11 +3191,11 @@ function renderCompleted(c){
 
   if(!done.length){
     c.innerHTML=`
-    <div class="empty" style="padding:60px 20px">
-      <div class="empty-icon">🎓</div>
-      <div class="empty-title">No completed courses yet</div>
-      <div style="font-size:13px;margin-bottom:16px">Complete a course to earn your first certificate!</div>
-      <button class="btn btn-primary" onclick="go('my-courses')">Browse My Courses</button>
+    <div class="empty-state" style="margin-top:32px;padding:56px 24px">
+      <div class="empty-state-icon">🏆</div>
+      <div class="empty-state-title">No certificates earned yet</div>
+      <div class="empty-state-sub">Finish your first course to earn a certificate. Your achievements will appear here.</div>
+      <button class="btn btn-primary" onclick="go('my-courses')">Go to My Courses →</button>
     </div>`;
     return;
   }
@@ -3543,7 +3569,7 @@ function deleteDoc(id){
 }
 
 function renderDocRows(docs){
-  if(!docs.length) return `<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No documents found.</div></div>`;
+  if(!docs.length) return `<div class="empty-state"><div class="empty-state-icon">📄</div><div class="empty-state-title">No documents found</div><div class="empty-state-sub">Try a different search or category filter.</div></div>`;
   const isAdmin=S.role==='admin';
   return docs.map(d=>{
     const done=d.completedBy.includes('Kristin Harrington');
@@ -3929,7 +3955,7 @@ function renderPolicies(c){
 }
 
 function renderPolicyCards(list){
-  if(!list.length) return `<div class="empty"><div class="empty-icon">📋</div><div class="empty-title">No policies match your search.</div></div>`;
+  if(!list.length) return `<div class="empty-state"><div class="empty-state-icon">📋</div><div class="empty-state-title">No policies match your search</div><div class="empty-state-sub">Try a different keyword or clear the search.</div></div>`;
   // group by category
   const cats=[...new Set(list.map(p=>p.category))].sort();
   return cats.map(cat=>{
@@ -4151,7 +4177,13 @@ function renderAnnouncements(c){
   </div>`:''}
   <div style="font-size:11px;font-weight:600;color:var(--text3);text-transform:uppercase;letter-spacing:0.06em;margin-bottom:12px">All Announcements</div>
   ${rest.map(a=>announcementCardHTML(a,canPost)).join('')}
-  ${!ANNOUNCEMENTS.length?`<div class="empty"><div class="empty-icon">📢</div><div class="empty-title">No announcements yet</div></div>`:''}`;
+  ${!ANNOUNCEMENTS.length?`<div class="empty-state" style="margin-top:8px">
+    <div class="empty-state-icon">📢</div>
+    <div class="empty-state-title">Nothing posted yet</div>
+    <div class="empty-state-sub">Announcements you post will appear here for your whole team.</div>
+    ${['admin','manager'].includes(S.role)?`<button class="btn btn-primary btn-sm" onclick="openNewAnnouncementModal()">+ Post Announcement</button>`:''}
+  </div>`:''}`;
+}
 }
 
 function announcementCardHTML(a, canPost){
