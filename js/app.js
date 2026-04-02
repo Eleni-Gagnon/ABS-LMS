@@ -867,21 +867,51 @@ function filterCourses(search='', cat=''){
 }
 
 function courseCardHTML(co){
-  const pct=Math.round(co.completed/co.enrolled*100);
+  const enrolled=co.enrolled||0;
+  const completed=co.completed||0;
+  const pct=enrolled?Math.round(completed/enrolled*100):0;
+  const quizCount=(COURSE_MODULES[co.id]||[]).filter(m=>m.type==='quiz').length;
+  const publishedMods=(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status).length;
+
+  // pick progress bar color
+  const barColor=pct===100?'var(--success)':pct>=50?'var(--brand-gold)':'var(--brand-gold)';
+
   return `<div class="course-card" onclick="openCourseModal(${co.id})">
-    <div class="course-thumb" style="background:${co.color}">${co.emoji}</div>
+
+    <!-- Thumbnail -->
+    <div class="course-thumb" style="background:${co.color}">
+      <div class="course-thumb-emoji">${co.emoji}</div>
+      <div class="course-thumb-bar"><div class="course-thumb-bar-fill" style="width:${pct}%"></div></div>
+    </div>
+
+    <!-- Body -->
     <div class="course-body">
-      <div class="course-title">${co.title}</div>
-      <div class="course-meta">
+
+      <!-- Category pill + quiz badge -->
+      <div class="course-meta" style="margin-bottom:8px">
         <span class="badge badge-gray">${co.cat}</span>
-        <span style="font-size:11px;color:var(--text3)">${co.mods} modules · ${co.dur}</span>
+        ${quizCount?`<span class="badge badge-blue">📝 ${quizCount} quiz${quizCount!==1?'zes':''}</span>`:''}
       </div>
-      ${(()=>{
-        const total=(COURSE_MODULES[co.id]||[]).filter(m=>m.type==='quiz').length;
-        return total?`<div style="font-size:11px;color:var(--accent);margin-top:4px">📝 ${total} quiz${total!==1?'zes':''}</div>`:'';
-      })()}
-      <div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${pct}%"></div></div>
-      <div style="font-size:11px;color:var(--text3);margin-top:3px">${co.completed}/${co.enrolled} completed · ${co.dur}</div>
+
+      <div class="course-title">${co.title}</div>
+
+      <!-- Module/duration meta -->
+      <div style="display:flex;align-items:center;gap:12px;font-size:11px;color:var(--text3)">
+        <span>📋 ${publishedMods} module${publishedMods!==1?'s':''}</span>
+        <span>⏱ ${co.dur}</span>
+      </div>
+
+      <!-- Progress footer -->
+      <div class="course-footer">
+        <div class="course-progress-label">
+          <span>${completed} of ${enrolled} completed</span>
+          <strong>${pct}%</strong>
+        </div>
+        <div class="progress-bar" style="height:7px">
+          <div class="progress-fill" style="width:${pct}%;background:${barColor}"></div>
+        </div>
+      </div>
+
     </div>
   </div>`;
 }

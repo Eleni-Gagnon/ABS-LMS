@@ -158,12 +158,24 @@
   .av-lg{width:44px;height:44px;font-size:14px}
 
   /* ── COURSE CARD ── */
-  .course-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;cursor:pointer;transition:all 0.15s}
-  .course-card:hover{border-color:var(--brand-gold);box-shadow:var(--shadow);transform:translateY(-2px)}
-  .course-thumb{height:88px;display:flex;align-items:center;justify-content:center;font-size:32px}
-  .course-body{padding:12px 14px}
-  .course-title{font-size:13px;font-weight:600;margin-bottom:5px}
-  .course-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap}
+  .course-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;cursor:pointer;transition:all 0.18s;display:flex;flex-direction:column}
+  .course-card:hover{border-color:var(--brand-gold);box-shadow:var(--shadow-lg);transform:translateY(-3px)}
+  .course-thumb{height:100px;display:flex;align-items:center;justify-content:center;font-size:36px;position:relative;overflow:hidden;flex-shrink:0}
+  .course-thumb::before{content:'';position:absolute;inset:0;background:inherit;opacity:0.18}
+  .course-thumb::after{content:'';position:absolute;inset:0;
+    background-image:radial-gradient(circle at 70% 30%, rgba(255,255,255,0.22) 0%, transparent 60%),
+                     radial-gradient(circle at 20% 80%, rgba(0,0,0,0.12) 0%, transparent 50%);
+  }
+  .course-thumb-emoji{position:relative;z-index:1;font-size:36px;filter:drop-shadow(0 2px 6px rgba(0,0,0,0.18));line-height:1}
+  .course-thumb-bar{position:absolute;bottom:0;left:0;right:0;height:3px;background:rgba(0,0,0,0.15);z-index:2}
+  .course-thumb-bar-fill{height:100%;background:rgba(255,255,255,0.7);transition:width 0.4s ease}
+  .course-body{padding:14px 16px;display:flex;flex-direction:column;flex:1}
+  .course-title{font-size:13px;font-weight:600;margin-bottom:8px;line-height:1.4;color:var(--text)}
+  .course-meta{display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:0}
+  .course-footer{margin-top:auto;padding-top:12px;border-top:1px solid var(--border)}
+  .course-progress-label{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+  .course-progress-label span{font-size:11px;color:var(--text3)}
+  .course-progress-label strong{font-size:12px;font-weight:600;color:var(--accent)}
 
   /* ── CHECK CIRCLE ── */
   .check-c{width:22px;height:22px;border-radius:50%;border:1.5px solid var(--border2);display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:var(--text3)}
