@@ -880,7 +880,9 @@ function courseCardHTML(co){
 
     <!-- Thumbnail -->
     <div class="course-thumb" style="background:${co.color}">
-      <div class="course-thumb-emoji">${co.emoji}</div>
+      ${co.thumbnail
+        ? `<img src="${convertImageUrl(co.thumbnail)}" style="position:absolute;inset:0;width:100%;height:100%;object-fit:cover" onerror="this.style.display='none'">`
+        : `<div class="course-thumb-emoji">${co.emoji}</div>`}
       <div class="course-thumb-bar"><div class="course-thumb-bar-fill" style="width:${pct}%"></div></div>
     </div>
 
@@ -996,18 +998,50 @@ function openCourseModal(id){
     </div>
 
     <div id="cm-info">
-      <div class="form-group"><label class="form-label">Course Title</label><input type="text" value="${co.title}"></div>
+      <div class="form-group"><label class="form-label">Course Title</label><input type="text" id="cmTitle" value="${co.title}"></div>
       <div class="grid2">
         <div class="form-group"><label class="form-label">Category</label>
-          <select>${CATS.map(c=>`<option${c.name===co.cat?' selected':''}>${c.name}</option>`).join('')}</select>
+          <select id="cmCat">${CATS.map(c=>`<option${c.name===co.cat?' selected':''}>${c.name}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label class="form-label">Duration</label>
-          <select>
+          <select id="cmDur">
             ${['5 minutes','10 minutes','30 minutes','45 minutes','60 minutes'].map(d=>`<option${d===co.dur?' selected':''}>${d}</option>`).join('')}
           </select>
         </div>
       </div>
-</div>
+
+      <!-- Thumbnail editor -->
+      <div class="form-group">
+        <label class="form-label">Thumbnail Image</label>
+        <div style="display:flex;gap:14px;align-items:flex-start">
+
+          <!-- Preview box -->
+          <div id="thumbPreview" style="width:100px;height:70px;border-radius:var(--radius);overflow:hidden;border:1px solid var(--border2);flex-shrink:0;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:26px;position:relative">
+            ${co.thumbnail
+              ? `<img id="thumbPreviewImg" src="${convertImageUrl(co.thumbnail)}" style="width:100%;height:100%;object-fit:cover">`
+              : `<span id="thumbPreviewEmoji">${co.emoji}</span>`}
+          </div>
+
+          <div style="flex:1">
+            <!-- URL input -->
+            <input type="text" id="thumbUrl" placeholder="Paste image URL (or Google Drive link)…"
+              value="${co.thumbnail||''}"
+              oninput="previewThumb(this.value)"
+              style="margin-bottom:8px">
+
+            <!-- File upload -->
+            <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+              <label class="btn btn-sm" style="cursor:pointer;margin:0">
+                📁 Upload Image
+                <input type="file" accept="image/*" style="display:none" onchange="handleThumbFile(this,${id})">
+              </label>
+              ${co.thumbnail?`<button class="btn btn-sm btn-danger" onclick="clearThumb(${id})">✕ Remove</button>`:''}
+            </div>
+            <div style="font-size:11px;color:var(--text3);margin-top:6px">Supports JPG, PNG, WebP · Google Drive links auto-converted</div>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <div id="cm-mods" style="display:none">
       <div style="font-size:12px;color:var(--text2);margin-bottom:14px">Drag ⠿ to reorder. Click a module to expand and edit content.</div>
@@ -1208,6 +1242,50 @@ function previewImg(input){
   if(url){
     preview.outerHTML=`<img src="${url}" style="max-width:100%;border-radius:var(--radius-sm);display:block;margin-top:4px" onerror="this.style.display='none'" id="imgPreview">`;
   }
+}
+
+// ─── THUMBNAIL HELPERS ────────────────────────────────────────────────────
+function previewThumb(url){
+  const src=convertImageUrl(url.trim());
+  const preview=document.getElementById('thumbPreview');
+  if(!preview) return;
+  let img=document.getElementById('thumbPreviewImg');
+  const emoji=document.getElementById('thumbPreviewEmoji');
+  if(src){
+    if(emoji) emoji.style.display='none';
+    if(!img){
+      img=document.createElement('img');
+      img.id='thumbPreviewImg';
+      img.style.cssText='width:100%;height:100%;object-fit:cover;position:absolute;inset:0';
+      preview.appendChild(img);
+    }
+    img.src=src;
+    img.style.display='block';
+  } else {
+    if(img) img.style.display='none';
+    if(emoji) emoji.style.display='';
+  }
+}
+
+function handleThumbFile(input, courseId){
+  const file=input.files[0];
+  if(!file) return;
+  const reader=new FileReader();
+  reader.onload=e=>{
+    const dataUrl=e.target.result;
+    const urlField=document.getElementById('thumbUrl');
+    if(urlField) urlField.value=dataUrl;
+    previewThumb(dataUrl);
+  };
+  reader.readAsDataURL(file);
+}
+
+function clearThumb(courseId){
+  const urlField=document.getElementById('thumbUrl');
+  if(urlField) urlField.value='';
+  previewThumb('');
+  const co=COURSES.find(c=>c.id===courseId);
+  if(co) co.thumbnail=null;
 }
 
 function convertImageUrl(url){
@@ -1591,12 +1669,16 @@ function saveCourseChanges(id){
 
   // Save Course Info tab fields
   if(co){
-    const titleInput=document.querySelector('#cm-info input[type=text]');
-    const catSelect=document.querySelector('#cm-info select');
-    const durSelect=document.querySelectorAll('#cm-info select')[1];
+    const titleInput=document.getElementById('cmTitle');
+    const catSelect=document.getElementById('cmCat');
+    const durSelect=document.getElementById('cmDur');
+    const thumbInput=document.getElementById('thumbUrl');
     if(titleInput?.value.trim()) co.title=titleInput.value.trim();
     if(catSelect?.value) co.cat=catSelect.value;
     if(durSelect?.value) co.dur=durSelect.value;
+    // thumbnail: use URL field (may have been set by file upload too)
+    const thumbVal=thumbInput?.value.trim()||'';
+    co.thumbnail=thumbVal||null;
   }
 
   // Save modules from DOM
