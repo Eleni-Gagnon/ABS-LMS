@@ -340,14 +340,20 @@
   }
 
   /* Rotating ring */
-  .login-ring{
+  /* Ring wrapper — holds both the spinning ring and the static logo */
+  .login-ring-wrap{
     position:absolute;
     top:14%;right:12%;
     width:220px;height:220px;
+    pointer-events:none;
+  }
+
+  .login-ring{
+    position:absolute;
+    inset:0;
     border-radius:50%;
     border:1px solid rgba(201,162,39,0.14);
     animation:spinSlow 28s linear infinite;
-    pointer-events:none;
   }
   .login-ring::before{
     content:'';
@@ -364,6 +370,16 @@
     border-radius:50%;
     margin-top:-4px;
     box-shadow:0 0 12px 3px rgba(201,162,39,0.5);
+  }
+
+  /* Logo sits static in the center of the ring */
+  .login-ring-logo{
+    position:absolute;
+    top:50%;left:50%;
+    transform:translate(-50%,-50%);
+    width:150px;height:150px;
+    object-fit:contain;
+    filter:drop-shadow(0 0 18px rgba(201,162,39,0.25));
   }
 
   .login-brand-content{position:relative;z-index:2;}
