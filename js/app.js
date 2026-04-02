@@ -10,7 +10,9 @@ let CURRENT_PROFILE = null;
 
 const S = {
   role:'admin', page:'dashboard',
-  quiz:{q:0,sel:null,answered:false,score:0,done:false},
+  quiz:{q:0,sel:null,answered:false,score:0,done:false}, // legacy, kept for saveProgress compat
+  quizStates:{}, // per-module quiz state, keyed by "courseId_modIdx"
+  activeQuizKey:null, // tracks which quiz is currently open (for pickAns/retakeQuiz)
   videoWatched:false,
   progress:35,
   signedOff:false,
@@ -25,6 +27,15 @@ const S = {
   formResponses:{},
   courseDrafts:{}
 };
+
+// Returns (creating if needed) the quiz state for a specific module
+function getModQuizState(courseId, modIdx){
+  const key = courseId+'_'+modIdx;
+  if(!S.quizStates[key]){
+    S.quizStates[key]={q:0,sel:null,answered:false,score:0,done:false,ready:false};
+  }
+  return S.quizStates[key];
+}
 
 const USERS = {
   admin:{name:'Eleni Gagnon',initials:'EG',role:'Admin',avBg:'#dbeafe',avCol:'#1a4fa0'},
@@ -303,7 +314,7 @@ function renderDashboard(c){
     },0);
     const doneModules=assignedCourses.reduce((sum,co)=>{
       const mods=(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status);
-      const done=(S.completedModules?.[co.id]||[]).length + (mods.some(m=>m.type==='quiz')&&S.quiz.done&&S.quiz.score>=3?1:0);
+      const done=(S.completedModules?.[co.id]||[]).length;
       return sum+Math.min(done,mods.length);
     },0);
     const overallPct=totalModules?Math.round(doneModules/totalModules*100):0;
@@ -2772,13 +2783,11 @@ function renderCourseDetail(c){
 
     ${mods.map((m,i)=>{
       const isQuiz=m.type==='quiz';
-      const modulesBefore=mods.slice(0,i).filter(m=>m.type!=='quiz');
-      const allBeforeDone=modulesBefore.every((_, j)=>{
-        const realIdx=mods.indexOf(modulesBefore[j]);
-        return S.completedModules[co.id].includes(realIdx);
-      });
+      // Lock a quiz until ALL modules above it (including earlier quizzes) are done
+      const allBeforeDone=mods.slice(0,i).every((_,j)=>S.completedModules[co.id].includes(j));
       const quizLocked=isQuiz&&!allBeforeDone;
-      const isDone=(m.type==='quiz'&&qs.done&&qs.score>=Math.ceil(getActiveQuiz().length*0.75))||(S.completedModules[co.id].includes(i));
+      // Single source of truth: completedModules
+      const isDone=S.completedModules[co.id].includes(i);
       const isActive=S.activeModuleIdx[co.id]===i&&!quizLocked;
       return `
       <div style="margin-bottom:8px;border:1px solid ${isActive?'var(--brand-gold)':isDone?'var(--success-border)':'var(--border)'};border-radius:var(--radius-lg);overflow:hidden;transition:all 0.15s">
@@ -2799,10 +2808,14 @@ function renderCourseDetail(c){
         ${isActive?`
         <div style="border-top:1px solid var(--border);padding:20px;background:var(--surface)">
           ${m.type==='quiz'?
-            (!S.quizReady?`<div style="text-align:center;padding:12px 0">
+            (()=>{
+              const mqs=getModQuizState(co.id,i);
+              S.activeQuizKey=co.id+'_'+i;
+              return !mqs.ready?`<div style="text-align:center;padding:12px 0">
               <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Ready to test your knowledge?</div>
-              <button class="btn btn-primary" onclick="S.quizReady=true;S.quiz={q:0,sel:null,answered:false,score:0,done:false};renderCourseDetail(document.getElementById('mainContent'))">Start Quiz →</button>
-            </div>`:renderQuiz(co.id,i))
+              <button class="btn btn-primary" onclick="getModQuizState(${co.id},${i}).ready=true;S.activeQuizKey='${co.id}_${i}';renderCourseDetail(document.getElementById('mainContent'))">Start Quiz →</button>
+            </div>`:renderQuiz(co.id,i);
+            })()
           :`
             ${(m.blocks||[]).length?(m.blocks||[]).map(b=>renderBlock(b,i)).join(''):`<div style="font-size:13px;color:var(--text3);font-style:italic">Content coming soon.</div>`}
             ${isDone?`<div style="margin-top:12px;font-size:12px;color:var(--success);font-weight:500">✓ Completed</div>`:''}
@@ -2895,7 +2908,8 @@ function getActiveQuiz(){
 }
 
 function renderQuiz(courseId, modIdx){
-  const qs=S.quiz;
+  S.activeQuizKey=courseId+'_'+modIdx;
+  const qs=getModQuizState(courseId, modIdx);
   const ACTIVE_QUIZ=getActiveQuiz();
   if(!ACTIVE_QUIZ||!ACTIVE_QUIZ.length){
     return `<div style="text-align:center;padding:20px 0;color:var(--text3);font-style:italic">No quiz questions added yet. Add a Quiz module using the + Add Module wizard.</div>`;
@@ -2939,31 +2953,29 @@ function renderQuiz(courseId, modIdx){
 
 function nextQ(courseId, modIdx){
   const ACTIVE_QUIZ=getActiveQuiz();
-  if(S.quiz.q<ACTIVE_QUIZ.length-1){
-    S.quiz.q++;
-    S.quiz.sel=null;
-    S.quiz.answered=false;
+  const qs=getModQuizState(courseId, modIdx);
+  if(qs.q<ACTIVE_QUIZ.length-1){
+    qs.q++;
+    qs.sel=null;
+    qs.answered=false;
   } else {
-    S.quiz.done=true;
+    qs.done=true;
   }
   renderCourseDetail(document.getElementById('mainContent'));
 }
 
 function pickAns(i){
-  if(S.quiz.answered) return;
-  S.quiz.sel=i;
-  S.quiz.answered=true;
+  const qs=S.activeQuizKey?S.quizStates[S.activeQuizKey]:null;
+  if(!qs||qs.answered) return;
+  qs.sel=i;
+  qs.answered=true;
   const ACTIVE_QUIZ=getActiveQuiz();
-  if(i===ACTIVE_QUIZ[S.quiz.q].correct) S.quiz.score++;
-  // if last question, show results immediately
-  if(S.quiz.q>=ACTIVE_QUIZ.length-1){
-    S.quiz.done=true;
-  }
+  if(i===ACTIVE_QUIZ[qs.q].correct) qs.score++;
+  if(qs.q>=ACTIVE_QUIZ.length-1) qs.done=true;
   renderCourseDetail(document.getElementById('mainContent'));
 }
 function retakeQuiz(){
-  S.quiz={q:0,sel:null,answered:false,score:0,done:false};
-  S.quizReady=false;
+  if(S.activeQuizKey) S.quizStates[S.activeQuizKey]={q:0,sel:null,answered:false,score:0,done:false,ready:false};
   renderCourseDetail(document.getElementById('mainContent'));
 }
 // ─── VIDEO TRACKING ENGINE ─────────────────────────────────────────────────
