@@ -4181,9 +4181,8 @@ function renderAnnouncements(c){
     <div class="empty-state-icon">📢</div>
     <div class="empty-state-title">Nothing posted yet</div>
     <div class="empty-state-sub">Announcements you post will appear here for your whole team.</div>
-    ${['admin','manager'].includes(S.role)?`<button class="btn btn-primary btn-sm" onclick="openNewAnnouncementModal()">+ Post Announcement</button>`:''}
+    ${['admin','manager'].includes(S.role)?`<button class="btn btn-primary btn-sm" onclick="openNewAnnouncement()">+ Post Announcement</button>`:''}
   </div>`:''}`;
-}
 }
 
 function announcementCardHTML(a, canPost){
