@@ -11,6 +11,15 @@
 <body>
 
 <div id="notif"></div>
+
+<div id="loginScreen" style="display:none;position:fixed;inset:0;background:#000;align-items:center;justify-content:center;z-index:9999;flex-direction:column;gap:16px;">
+  <div style="background:#111;border:1px solid #333;border-radius:12px;padding:40px;width:340px;text-align:center;">
+    <h2 style="color:#fff;font-family:'DM Sans',sans-serif;font-size:20px;font-weight:600;margin:0 0 6px;">Welcome back</h2>
+    <p style="color:#888;font-family:'DM Sans',sans-serif;font-size:13px;margin:0 0 24px;">Sign in to the ABS Learning Portal</p>
+    <button onclick="doGoogleLogin()" style="width:100%;padding:12px;background:#C9A227;color:#000;border:none;border-radius:8px;font-family:'DM Sans',sans-serif;font-size:14px;font-weight:600;cursor:pointer;">Sign in with Google</button>
+    <div id="loginError" style="display:none;margin-top:12px;color:#ff6b6b;font-size:13px;font-family:'DM Sans',sans-serif;"></div>
+  </div>
+</div>
 <div id="modalBg"><div id="modalContent" class="modal"></div></div>
 <div class="sidebar-overlay" id="sidebarOverlay" onclick="closeSidebar()"></div>
 
