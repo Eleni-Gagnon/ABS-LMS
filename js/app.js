@@ -877,10 +877,7 @@ function courseCardHTML(co){
         <span style="font-size:11px;color:var(--text3)">${co.mods} modules · ${co.dur}</span>
       </div>
       ${(()=>{
-        const qs=COURSE_QUIZZES[co.id]||[];
-        const hasQ=qs.length&&qs[0].q;
-        const modQuizzes=(COURSE_MODULES[co.id]||[]).filter(m=>m.type==='quiz').length;
-        const total=modQuizzes+(hasQ?1:0);
+        const total=(COURSE_MODULES[co.id]||[]).filter(m=>m.type==='quiz').length;
         return total?`<div style="font-size:11px;color:var(--accent);margin-top:4px">📝 ${total} quiz${total!==1?'zes':''}</div>`:'';
       })()}
       <div class="progress-bar" style="margin-top:8px"><div class="progress-fill green" style="width:${pct}%"></div></div>
