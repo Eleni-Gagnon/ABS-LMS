@@ -644,7 +644,8 @@ function renderCourseLibrary(c){
         :`<div class="empty-state">
             <div class="empty-state-icon">🗂️</div>
             <div class="empty-state-title">No courses in ${cat.name} yet</div>
-            <div class="empty-state-sub">Use the "+ Add Course" button above to get started.</div>
+            <div class="empty-state-sub">Add your first course to this category to get your team learning.</div>
+            <button class="btn btn-primary btn-sm" onclick="openAddCourseToCat('${cat.name.replace(/'/g,"\\'")}')">+ Add Course</button>
           </div>`}
       </div>`;
     }).join('')}
