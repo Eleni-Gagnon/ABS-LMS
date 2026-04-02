@@ -4434,7 +4434,7 @@ function hideLogin(){
 async function doGoogleLogin(){
   const {error}=await sb.auth.signInWithOAuth({
     provider:'google',
-    options:{redirectTo:'https://the-abs-company-lms.vercel.app'}
+    options:{redirectTo:'https://abs-lms.vercel.app'}
   });
   if(error) showLoginError('Google sign in failed: '+error.message);
 }
