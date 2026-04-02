@@ -630,13 +630,17 @@ function renderCourseLibrary(c){
             <div style="font-size:12px;color:var(--text3)">${catCourses.length} course${catCourses.length!==1?'s':''}</div>
           </div>
           <div style="display:flex;gap:6px">
-            <button class="btn btn-sm" onclick="openAddCourseToCat('${cat.name.replace(/'/g,"\\'")}')">+ Add Course</button>
             <button class="btn btn-sm" onclick="openReorderModal('${cat.name.replace(/'/g,"\\'")}')">⇅ Reorder</button>
             <button class="btn btn-sm" onclick="openAssignModal('${cat.name.replace(/'/g,"\\'")}')">👥 Assign</button>
           </div>
         </div>
         <div style="font-size:12px;color:var(--text2);margin-bottom:12px">${cat.desc}</div>
-        ${catCourses.length?`<div class="grid3" id="catgrid-${cat.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}">${catCourses.map(co=>courseCardHTML(co)).join('')}</div>`
+        ${catCourses.length?`<div class="grid3" id="catgrid-${cat.name.replace(/\s+/g,'_').replace(/[^a-zA-Z0-9_]/g,'')}">${catCourses.map(co=>courseCardHTML(co)).join('')}
+            <div class="course-card-add" onclick="openAddCourseToCat('${cat.name.replace(/'/g,"\\'")}')">
+              <div style="font-size:22px;margin-bottom:8px;color:var(--border2)">+</div>
+              <div style="font-size:12px;font-weight:500;color:var(--text3)">Add Course</div>
+            </div>
+          </div>`
         :`<div class="empty-state">
             <div class="empty-state-icon">🗂️</div>
             <div class="empty-state-title">No courses in ${cat.name} yet</div>

@@ -158,6 +158,9 @@
   .av-lg{width:44px;height:44px;font-size:14px}
 
   /* ── COURSE CARD ── */
+  .course-card-add{background:var(--surface2);border:2px dashed var(--border2);border-radius:var(--radius-lg);display:flex;flex-direction:column;align-items:center;justify-content:center;cursor:pointer;transition:all 0.15s;min-height:180px}
+  .course-card-add:hover{border-color:var(--brand-gold);background:var(--accent-bg)}
+  .course-card-add:hover div{color:var(--brand-gold)!important}
   .course-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);overflow:hidden;cursor:pointer;transition:all 0.18s;display:flex;flex-direction:column}
   .course-card:hover{border-color:var(--brand-gold);box-shadow:var(--shadow-lg);transform:translateY(-3px)}
   .course-thumb{height:100px;display:flex;align-items:center;justify-content:center;font-size:36px;position:relative;overflow:hidden;flex-shrink:0}
