@@ -2279,14 +2279,11 @@ function renderPeople(c){
       <thead>
         <tr>
           <th>Person</th>
-          <th>Job Title</th>
           <th>Dept</th>
           <th>Manager</th>
           <th>Start Date</th>
-          <th>LMS Progress</th>
+          <th style="min-width:140px">LMS Progress</th>
           <th>Status</th>
-          <th>Account</th>
-          <th>Edit</th>
           <th>Actions</th>
         </tr>
       </thead>
@@ -2298,43 +2295,40 @@ function renderPeople(c){
 }
 
 function renderPeopleRows(list){
-  return list.map(l=>`
+  return list.map(l=>{
+    const pct=getPersonOverallPct(l);
+    return `
   <tr>
     <td>
       <div style="display:flex;align-items:center;gap:10px">
         <div class="av av-md" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
         <div>
-          <div style="font-weight:500">${l.name}</div>
+          <div style="font-weight:500;font-size:13px">${l.name}</div>
+          <div style="font-size:11px;color:var(--text2)">${l.title}</div>
           <div style="font-size:11px;color:var(--text3)">${l.email}</div>
         </div>
       </div>
     </td>
-    <td style="color:var(--text2);font-size:13px">${l.title}</td>
     <td><span class="badge badge-gray">${l.dept}</span></td>
     <td style="font-size:13px;color:var(--text2)">${l.manager}</td>
-    <td style="font-size:12px;color:var(--text3)">${l.start}</td>
-    <td style="min-width:130px">${(()=>{
-      const pct=getPersonOverallPct(l);
-      return `<div style="display:flex;align-items:center;gap:8px">
-        <div class="progress-bar" style="flex:1;margin:0">
-          <div class="progress-fill ${pct===100?'green':pct>60?'':'amber'}" style="width:${pct}%"></div>
+    <td style="font-size:12px;color:var(--text3);white-space:nowrap">${l.start}</td>
+    <td style="min-width:140px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <div class="progress-bar" style="flex:1;height:6px;margin:0;min-width:60px">
+          <div class="progress-fill ${pct===100?'green':''}" style="width:${pct}%;height:6px;background:${pct===100?'var(--success)':pct>0?'var(--accent)':'var(--border)'}"></div>
         </div>
-        <span style="font-size:11px;color:var(--text2);min-width:28px">${pct}%</span>
-      </div>`;
-    })()}</td>
-    <td><span class="badge ${getPersonOverallPct(l)===100?'badge-success':'badge-warn'}">${getPersonOverallPct(l)===100?'Complete':'In Progress'}</span></td>
-    <td><span class="badge ${l.account==='active'?'badge-success':'badge-gray'}">${l.account==='active'?'Active':'Inactive'}</span></td>
-    <td>
-      <button class="btn btn-sm btn-primary" onclick="openPersonModal('${l.name}')">✏️ Edit</button>
-    </td>
-    <td>
-      <div style="display:flex;gap:5px;flex-wrap:wrap">
-        <button class="btn btn-sm" onclick="toast('Reminder sent to ${l.name}!')">Remind</button>
-        <button class="btn btn-sm" style="color:${l.account==='active'?'var(--danger)':'var(--success)'};border-color:${l.account==='active'?'var(--danger-border)':'var(--success-border)'}"
-          onclick="toggleAccount('${l.name}',this)">${l.account==='active'?'Deactivate':'Activate'}</button>
+        <span style="font-size:11px;color:var(--text2);min-width:30px;text-align:right">${pct}%</span>
       </div>
     </td>
-  </tr>`).join('');
+    <td><span class="badge ${pct===100?'badge-success':pct>0?'badge-blue':'badge-gray'}">${pct===100?'Complete':pct>0?'In Progress':'Not Started'}</span></td>
+    <td>
+      <div style="display:flex;gap:5px">
+        <button class="btn btn-sm" onclick="openPersonModal('${l.name}')">Edit</button>
+        <button class="btn btn-sm" onclick="toast('Reminder sent to ${l.name}!')">Remind</button>
+      </div>
+    </td>
+  </tr>`;
+  }).join('');
 }
 
 function filterPeople(){
