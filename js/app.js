@@ -2833,17 +2833,15 @@ function openLearnerCourse(id){
 // ─── COURSE DETAIL ─────────────────────────────────────────────────────────
 function renderCourseDetail(c){
   const co=COURSES.find(x=>x.id===S.activeCourseId)||COURSES[0];
-  const qs=S.quiz;
+  const qs=S.quiz; // legacy ref kept for safety
   const mods=(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status);
   const totalMods=mods.length;
   if(!S.activeModuleIdx) S.activeModuleIdx={};
   if(!S.completedModules) S.completedModules={};
   if(!S.completedModules[co.id]) S.completedModules[co.id]=[];
 
-  const completedCount=mods.filter((m,i)=>{
-    if(m.type==='quiz') return qs.done&&qs.score>=3;
-    return S.completedModules[co.id].includes(i);
-  }).length;
+  // Single source of truth: completedModules for all module types
+  const completedCount=mods.filter((_,i)=>S.completedModules[co.id].includes(i)).length;
   const pct=totalMods?Math.round(completedCount/totalMods*100):0;
 
   document.getElementById('pageTitle').textContent='';
@@ -2950,6 +2948,11 @@ function renderCourseDetail(c){
             (()=>{
               const mqs=getModQuizState(co.id,i);
               S.activeQuizKey=co.id+'_'+i;
+              if(isDone) return `<div style="text-align:center;padding:16px 0">
+                <div style="font-size:32px;margin-bottom:8px">✅</div>
+                <div style="font-size:14px;font-weight:600;color:var(--success);margin-bottom:4px">Quiz Completed</div>
+                <div style="font-size:12px;color:var(--text3)">You've already passed this quiz.</div>
+              </div>`;
               return !mqs.ready?`<div style="text-align:center;padding:12px 0">
               <div style="font-size:13px;color:var(--text2);margin-bottom:14px">Ready to test your knowledge?</div>
               <button class="btn btn-primary" onclick="getModQuizState(${co.id},${i}).ready=true;S.activeQuizKey='${co.id}_${i}';renderCourseDetail(document.getElementById('mainContent'))">Start Quiz →</button>
