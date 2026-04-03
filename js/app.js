@@ -3242,22 +3242,23 @@ function renderQuiz(courseId, modIdx){
   if(qs.done){
     const pct=Math.round(qs.score/ACTIVE_QUIZ.length*100);
     const passed=qs.score>=passScore;
-    // mark quiz module complete if passed
+    // Ensure module is marked complete on pass (covers page-refresh restore case)
     if(passed&&courseId!=null&&modIdx!=null){
       if(!S.completedModules) S.completedModules={};
       if(!S.completedModules[courseId]) S.completedModules[courseId]=[];
-      if(!S.completedModules[courseId].includes(modIdx)) S.completedModules[courseId].push(modIdx);
-      saveProgressToSupabase(courseId);
+      if(!S.completedModules[courseId].includes(modIdx)){
+        S.completedModules[courseId].push(modIdx);
+        saveProgressToSupabase(courseId);
+      }
     }
-    return `<div style="text-align:center;padding:20px 0">
+    // Inline fallback (shown on revisit/refresh — overlay only fires on live completion)
+    return `<div style="text-align:center;padding:28px 0">
       <div style="font-size:40px;margin-bottom:10px">${passed?'🏆':'📚'}</div>
-      <div style="font-size:22px;font-weight:700;margin-bottom:6px">${qs.score}/${ACTIVE_QUIZ.length} Correct</div>
-      <div style="font-size:14px;color:var(--text2);margin-bottom:12px">${pct}% — ${passed?'Passed! Great work.':'Score '+Math.round(passScore/ACTIVE_QUIZ.length*100)+'% or higher to pass.'}</div>
+      <div style="font-size:18px;font-weight:700;margin-bottom:4px;color:${passed?'var(--success)':'var(--danger)'}">${passed?'Quiz Passed!':'Not Quite'}</div>
+      <div style="font-size:13px;color:var(--text2);margin-bottom:16px">${qs.score}/${ACTIVE_QUIZ.length} correct · ${pct}%</div>
       ${passed
-        ?`<div class="callout callout-success" style="margin:14px 0">✓ Quiz passed!</div>
-          <button class="btn btn-primary" onclick="retakeQuiz()">Continue →</button>`
-        :`<div class="callout callout-warn" style="margin:14px 0">Not quite — give it another try!</div>
-          <button class="btn" onclick="retakeQuiz()">↺ Try Again</button>`}
+        ?`<button class="btn btn-primary" onclick="continueFromQuiz(${courseId},${modIdx})">Continue →</button>`
+        :`<button class="btn btn-primary" onclick="retakeQuizFromOverlay(${courseId},${modIdx})">↺ Try Again</button>`}
     </div>`;
   }
   const q=ACTIVE_QUIZ[qs.q];
@@ -3296,13 +3297,79 @@ function pickAns(i){
   qs.answered=true;
   const ACTIVE_QUIZ=getActiveQuiz();
   if(i===ACTIVE_QUIZ[qs.q].correct) qs.score++;
-  if(qs.q>=ACTIVE_QUIZ.length-1) qs.done=true;
+  const isLastQ=qs.q>=ACTIVE_QUIZ.length-1;
+  if(isLastQ) qs.done=true;
   renderCourseDetail(document.getElementById('mainContent'));
+  if(isLastQ){
+    const parts=S.activeQuizKey.split('_');
+    const cId=parseInt(parts[0]);
+    const mIdx=parseInt(parts[1]);
+    const passScore=Math.ceil(ACTIVE_QUIZ.length*0.75);
+    const passed=qs.score>=passScore;
+    setTimeout(()=>showQuizResult(passed, qs.score, ACTIVE_QUIZ.length, cId, mIdx), 80);
+  }
 }
 function retakeQuiz(){
   if(S.activeQuizKey) S.quizStates[S.activeQuizKey]={q:0,sel:null,answered:false,score:0,done:false,ready:false};
   renderCourseDetail(document.getElementById('mainContent'));
 }
+
+function showQuizResult(passed, score, total, courseId, modIdx){
+  const overlay=document.getElementById('quizResultOverlay');
+  if(!overlay) return;
+  const pct=Math.round(score/total*100);
+  const passPct=Math.round(Math.ceil(total*0.75)/total*100);
+  const barColor=passed?'var(--success)':'var(--danger)';
+  overlay.innerHTML=`
+    <div class="quiz-result-card ${passed?'quiz-result-pass':'quiz-result-fail'}">
+      ${passed?'<div id="confettiContainer"></div>':''}
+      <span class="quiz-result-emoji">${passed?'🏆':'📚'}</span>
+      <div class="quiz-result-title">${passed?'Quiz Passed!':'Not Quite!'}</div>
+      <div class="quiz-result-score">${score} out of ${total} correct</div>
+      <div class="quiz-result-bar">
+        <div class="quiz-result-bar-fill" id="qrBarFill" style="width:0%;background:${barColor}"></div>
+      </div>
+      <div class="quiz-result-pct-label">${pct}%${passed?' — Great work!':` — Need ${passPct}% to pass`}</div>
+      ${passed
+        ?`<button class="btn btn-primary quiz-result-btn" onclick="continueFromQuiz(${courseId},${modIdx})">Continue →</button>`
+        :`<div class="quiz-result-hint">Review the material and give it another shot — you've got this!</div>
+          <button class="btn btn-primary quiz-result-btn" onclick="retakeQuizFromOverlay(${courseId},${modIdx})">↺ Try Again</button>`
+      }
+    </div>`;
+  overlay.style.display='flex';
+  // Animate the bar fill after a short delay
+  requestAnimationFrame(()=>requestAnimationFrame(()=>{
+    const fill=document.getElementById('qrBarFill');
+    if(fill) fill.style.width=pct+'%';
+  }));
+  if(passed) setTimeout(launchConfetti, 200);
+}
+
+function launchConfetti(){
+  const container=document.getElementById('confettiContainer');
+  if(!container) return;
+  const colors=['#C9A227','#52a83a','#3b82f6','#ef4444','#8b5cf6','#f59e0b','#10b981','#f472b6'];
+  for(let i=0;i<70;i++){
+    const p=document.createElement('div');
+    p.className='confetti-piece';
+    p.style.cssText=`left:${Math.random()*100}%;animation-delay:${Math.random()*0.9}s;animation-duration:${0.7+Math.random()*0.9}s;background:${colors[Math.floor(Math.random()*colors.length)]};width:${5+Math.random()*7}px;height:${5+Math.random()*7}px;border-radius:${Math.random()>0.5?'50%':'2px'};`;
+    container.appendChild(p);
+  }
+}
+
+function continueFromQuiz(courseId, modIdx){
+  document.getElementById('quizResultOverlay').style.display='none';
+  const mods=COURSE_MODULES[courseId]||[];
+  const next=mods.findIndex((_,i)=>i>modIdx&&!S.completedModules[courseId].includes(i));
+  S.activeModuleIdx[courseId]=next>=0?next:null;
+  renderCourseDetail(document.getElementById('mainContent'));
+}
+
+function retakeQuizFromOverlay(courseId, modIdx){
+  document.getElementById('quizResultOverlay').style.display='none';
+  retakeQuiz();
+}
+
 // ─── VIDEO TRACKING ENGINE ─────────────────────────────────────────────────
 const VID = { playing:false, elapsed:0, total:1440, timer:null }; // 1440s = 24min
 
