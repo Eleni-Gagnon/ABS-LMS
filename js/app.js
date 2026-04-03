@@ -58,7 +58,7 @@ const COURSES = [
 
 
 const LEARNERS = [
-  {name:'Eleni Gagnon',ini:'EG',bg:'#dbeafe',tc:'#1a4fa0',dept:'Operations',title:'COO',email:'eleni@theabscompany.com',manager:'Sean Gagnon',start:'Apr 1, 2026',prog:0,overdue:0,status:'not-started',account:'active',assignedCourses:[1,2,5,6,7,8,9]},
+  {name:'Eleni Gagnon',ini:'EG',bg:'#dbeafe',tc:'#1a4fa0',dept:'Operations',title:'COO',email:'eleni@theabscompany.com',manager:'Sean Gagnon',start:'Apr 1, 2026',prog:0,overdue:0,status:'not-started',account:'active',assignedCourses:[1,2,5,6,7,8,9],role:'admin'},
   {name:'Sean Gagnon',ini:'SG',bg:'#e8f5e3',tc:'#2d6a1f',dept:'Sales',title:'CEO',email:'sean@theabscompany.com',manager:'Sean Gagnon',start:'Apr 1, 2026',prog:0,overdue:0,status:'not-started',account:'active',assignedCourses:[1,2,5,6,7,8,9]},
   {name:'Joyce Granville',ini:'JG',bg:'#f0edfe',tc:'#4a38b0',dept:'Operations',title:'Operations Specialist',email:'joyce@theabscompany.com',manager:'Eleni Gagnon',start:'Apr 1, 2026',prog:0,overdue:0,status:'not-started',account:'active',assignedCourses:[1,2,5,6,7,8,9]},
   {name:'Kristin Harrington',ini:'KH',bg:'#fef3dc',tc:'#8a5a00',dept:'Sales',title:'Sales Manager',email:'kristin@theabscompany.com',manager:'Sean Kirby',start:'Apr 1, 2026',prog:0,overdue:0,status:'not-started',account:'active',assignedCourses:[1,2,5,6,7,8,9]},
@@ -5280,13 +5280,15 @@ async function loadSupabaseData(){
     await loadProgressFromSupabase();
 
     // Re-render current page with fresh data + progress
-    // Recover role if savePersonModal accidentally wrote 'learner' to an admin profile
+    // Recover role if Supabase profile has wrong 'learner' value for an admin/manager
     if(currentProfile && currentProfile.role === 'learner'){
       const myLearner = LEARNERS.find(l=>l.email===currentProfile.email);
       if(myLearner && myLearner.role && myLearner.role !== 'learner'){
         currentProfile.role = myLearner.role;
+        S.actualRole = myLearner.role; // fix in-memory so switcher shows immediately
         await sb.from('profiles').update({role: myLearner.role}).eq('email', currentProfile.email);
         console.log('✅ Restored role to', myLearner.role);
+        renderNav(); // re-evaluate switcher visibility with corrected role
       }
     }
 
