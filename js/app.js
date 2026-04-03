@@ -292,6 +292,9 @@ function switchRole(role){
   document.getElementById('sidebarAv').style.color=u.avCol;
   document.getElementById('sidebarName').textContent=u.name;
   document.getElementById('sidebarRole').textContent=u.role;
+  // Always sync the dropdown so browser form-restore can't override it
+  const sel=document.getElementById('roleSelect');
+  if(sel && sel.value!==role) sel.value=role;
   renderNav();
   go('dashboard');
 }
