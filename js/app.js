@@ -3431,7 +3431,7 @@ function renderCourseDetail(c){
     </div>`:''}
   </div>`;
 
-  // auto-pop certificate on first completion
+  // Show course complete overlay on first completion
   if(pct===100){
     if(!S.completedCourses) S.completedCourses={};
     if(!S.completedCourses[co.id]){
@@ -3442,12 +3442,8 @@ function renderCourseDetail(c){
       };
       logActivity(USERS[S.role].name,'🏆',`Completed course: ${co.title}`);
       saveProgressToSupabase(co.id);
-      renderNotifPanel(); // move overdue/in-progress notif → completed
-      setTimeout(()=>openCertificate(
-        co.title, USERS[S.role].name,
-        new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
-        S.completedCourses[co.id].manager, 'Pass'
-      ), 600);
+      renderNotifPanel();
+      setTimeout(()=>showCourseCompleteOverlay(co.id), 400);
     }
   }
 }
@@ -3619,8 +3615,8 @@ function showQuizResult(passed, score, total, courseId, modIdx){
   if(passed) setTimeout(launchConfetti, 200);
 }
 
-function launchConfetti(){
-  const container=document.getElementById('confettiContainer');
+function launchConfetti(containerId='confettiContainer'){
+  const container=document.getElementById(containerId);
   if(!container) return;
   const colors=['#C9A227','#52a83a','#3b82f6','#ef4444','#8b5cf6','#f59e0b','#10b981','#f472b6'];
   for(let i=0;i<70;i++){
@@ -3629,6 +3625,70 @@ function launchConfetti(){
     p.style.cssText=`left:${Math.random()*100}%;animation-delay:${Math.random()*0.9}s;animation-duration:${0.7+Math.random()*0.9}s;background:${colors[Math.floor(Math.random()*colors.length)]};width:${5+Math.random()*7}px;height:${5+Math.random()*7}px;border-radius:${Math.random()>0.5?'50%':'2px'};`;
     container.appendChild(p);
   }
+}
+
+function showCourseCompleteOverlay(courseId){
+  const co=COURSES.find(c=>c.id===courseId);
+  if(!co) return;
+  const overlay=document.getElementById('courseCompleteOverlay');
+  if(!overlay) return;
+
+  const learner=LEARNERS.find(l=>l.name===USERS[S.role].name)||LEARNERS[0];
+  const assignedIds=learner?.assignedCourses||[];
+  const mods=(COURSE_MODULES[courseId]||[]).filter(m=>m.status==='published'||!m.status);
+  const allDone=assignedIds.every(id=>!!(S.completedCourses?.[id]));
+  const nextCourseId=assignedIds.find(id=>id!==courseId&&!(S.completedCourses?.[id]));
+  const nextCo=nextCourseId?COURSES.find(c=>c.id===nextCourseId):null;
+  const certDate=new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+  overlay.innerHTML=`
+    <div class="quiz-result-card quiz-result-pass">
+      <div id="courseConfetti"></div>
+      <div style="width:58px;height:58px;border-radius:14px;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:28px;margin:0 auto 14px;animation:emoji-bounce 1s ease 0.3s 2">${co.emoji}</div>
+      <div class="quiz-result-title" style="color:var(--success)">Course Complete!</div>
+      <div style="font-size:15px;font-weight:600;margin-bottom:4px;color:var(--text)">${co.title}</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:22px">${mods.length} module${mods.length!==1?'s':''} completed</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        ${allDone
+          ?`<button class="btn btn-primary quiz-result-btn" onclick="closeCourseCompleteOverlay();showAllCoursesCompleteOverlay()">See Your Achievement 🏆</button>`
+          :nextCo
+            ?`<button class="btn btn-primary quiz-result-btn" onclick="closeCourseCompleteOverlay();openLearnerCourse(${nextCo.id})">Next: ${nextCo.title.length>30?nextCo.title.slice(0,30)+'…':nextCo.title} →</button>`
+            :`<button class="btn btn-primary quiz-result-btn" onclick="closeCourseCompleteOverlay();go('my-courses')">Back to My Courses →</button>`
+        }
+        <button class="btn quiz-result-btn" onclick="closeCourseCompleteOverlay();openCertificate('${co.title.replace(/'/g,"\\'")}','${USERS[S.role].name}','${certDate}','${(learner?.manager||'Manager').replace(/'/g,"\\'")}','Pass')">🏆 View Certificate</button>
+      </div>
+    </div>`;
+  overlay.style.display='flex';
+  setTimeout(()=>launchConfetti('courseConfetti'),200);
+}
+
+function closeCourseCompleteOverlay(){
+  const overlay=document.getElementById('courseCompleteOverlay');
+  if(overlay) overlay.style.display='none';
+}
+
+function showAllCoursesCompleteOverlay(){
+  const overlay=document.getElementById('courseCompleteOverlay');
+  if(!overlay) return;
+  const learner=LEARNERS.find(l=>l.name===USERS[S.role].name)||LEARNERS[0];
+  const assignedIds=learner?.assignedCourses||[];
+  const totalMods=assignedIds.reduce((s,id)=>s+(COURSE_MODULES[id]||[]).filter(m=>m.status==='published'||!m.status).length,0);
+
+  overlay.innerHTML=`
+    <div class="quiz-result-card quiz-result-pass">
+      <div id="allDoneConfetti"></div>
+      <span class="quiz-result-emoji">🏆</span>
+      <div class="quiz-result-title" style="font-size:28px;color:var(--success)">You Did It!</div>
+      <div style="font-size:15px;color:var(--text2);margin-bottom:6px">All ${assignedIds.length} courses completed</div>
+      <div style="font-size:13px;color:var(--text3);margin-bottom:22px">${totalMods} total modules · Onboarding complete 🎉</div>
+      <div style="display:flex;flex-direction:column;gap:10px">
+        <button class="btn btn-primary quiz-result-btn" onclick="closeCourseCompleteOverlay();go('completed')">View All Certificates →</button>
+        <button class="btn quiz-result-btn" onclick="closeCourseCompleteOverlay();go('dashboard')">Back to Dashboard</button>
+      </div>
+    </div>`;
+  overlay.style.display='flex';
+  setTimeout(()=>launchConfetti('allDoneConfetti'),200);
+  setTimeout(()=>launchConfetti('allDoneConfetti'),900);
 }
 
 function continueFromQuiz(courseId, modIdx){
