@@ -292,6 +292,10 @@ setTimeout(renderNotifPanel,100);
 
 function switchRole(role){
   S.role=role;
+  // When admin previews as learner, use their own profile so the view reflects their real data
+  if(role==='learner' && S.actualRole==='admin'){
+    USERS['learner']={...USERS['admin']};
+  }
   const u=USERS[role];
   document.getElementById('sidebarAv').textContent=u.initials;
   document.getElementById('sidebarAv').style.background=u.avBg;
