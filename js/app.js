@@ -2244,10 +2244,7 @@ function addQuestion(){
 
 // ─── PEOPLE (unified Learners + User Management) ───────────────────────────
 function renderPeople(c){
-  const tr=document.getElementById('topbarRight');
-  if(S.role==='admin'){
-    tr.innerHTML=`<button class="btn btn-primary btn-sm" onclick="openAddUserModal()">+ Add Person</button>`;
-  }
+  document.getElementById('topbarRight').innerHTML='';
 
   const activeCount=LEARNERS.filter(l=>l.account==='active').length;
   const completeCount=LEARNERS.filter(l=>l.status==='complete').length;
@@ -2272,6 +2269,7 @@ function renderPeople(c){
       <option value="active">Active</option>
       <option value="inactive">Inactive</option>
     </select>
+    ${S.role==='admin'?`<button class="btn btn-primary btn-sm" onclick="openAddUserModal()" style="margin-left:auto">+ Add Person</button>`:''}
   </div>
 
   <div class="table-wrap">
