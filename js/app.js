@@ -337,6 +337,7 @@ function toggleNavGroup(page){
 
 function go(page){
   S.page=page;
+  if(page!=='reports'){_rptTab='overview';_rptCourse=null;_rptLearner=null;}
   closeSidebar();
   renderNav();
   const titles={
@@ -2727,130 +2728,344 @@ function swSOTab(el,id){
 }
 
 // ─── REPORTS ───────────────────────────────────────────────────────────────
-function renderReports(c){
-  const tr=document.getElementById('topbarRight');
-  tr.innerHTML=`<button class="btn btn-sm" onclick="toast('CSV exported.')">↓ Export CSV</button>`;
+let _rptTab='overview', _rptCourse=null, _rptLearner=null;
 
+function getPersonOverdueCourses(l,today){
+  const t=today||(()=>{const d=new Date();d.setHours(0,0,0,0);return d;})();
+  return (l.assignedCourses||[]).flatMap(id=>{
+    const co=COURSES.find(c=>c.id===id);
+    if(!co?.dueDate) return [];
+    const due=new Date(co.dueDate); due.setHours(0,0,0,0);
+    const pct=getPersonCoursePct(l.email,id);
+    if(due>=t||pct===100) return [];
+    return [{id,co,daysOverdue:Math.round((t-due)/(1000*60*60*24)),pct}];
+  });
+}
+
+function goReport(tab,extra){
+  _rptTab=tab;
+  if(extra?.course!=null) _rptCourse=extra.course;
+  if(extra?.learner!=null) _rptLearner=extra.learner;
+  renderReports(document.getElementById('mainContent'));
+}
+
+function exportReportCSV(){
   const isAdmin=S.role==='admin';
   const u=USERS[S.role];
-  const teamMembers=isAdmin?LEARNERS:LEARNERS.filter(l=>l.manager===u.name);
+  const team=isAdmin?LEARNERS:LEARNERS.filter(l=>l.manager===u.name);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const activeCourses=COURSES.filter(co=>team.some(l=>l.assignedCourses?.includes(co.id)));
+  const headers=['Name','Email','Department','Title','Overall %',...activeCourses.map(co=>co.title),'Overdue Courses'];
+  const rows=team.map(l=>{
+    const overall=getPersonOverallPct(l);
+    const overdue=getPersonOverdueCourses(l,today);
+    const coursePcts=activeCourses.map(co=>l.assignedCourses?.includes(co.id)?getPersonCoursePct(l.email,co.id)+'%':'N/A');
+    return [l.name,l.email,l.dept,l.title,overall+'%',...coursePcts,overdue.map(x=>x.co.title).join('; ')];
+  });
+  const csv=[headers,...rows].map(r=>r.map(v=>`"${String(v).replace(/"/g,'""')}"`).join(',')).join('\r\n');
+  const a=document.createElement('a');
+  a.href='data:text/csv;charset=utf-8,\uFEFF'+encodeURIComponent(csv);
+  a.download='abs-lms-report-'+new Date().toISOString().slice(0,10)+'.csv';
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  toast('CSV exported!');
+}
 
-  const total=teamMembers.length;
-  const completed=teamMembers.filter(l=>l.status==='complete').length;
-  const inProgress=teamMembers.filter(l=>l.status==='in-progress').length;
-  const overdue=teamMembers.filter(l=>l.overdue>0).length;
-  const notStarted=teamMembers.filter(l=>l.status==='not-started').length;
+function renderReports(c){
+  const tr=document.getElementById('topbarRight');
+  tr.innerHTML=`<button class="btn btn-sm" onclick="exportReportCSV()">↓ Export CSV</button>`;
+  const isAdmin=S.role==='admin';
+  const u=USERS[S.role];
+  const team=isAdmin?LEARNERS:LEARNERS.filter(l=>l.manager===u.name);
+  const today=new Date(); today.setHours(0,0,0,0);
+  const enriched=team.map(l=>({...l,pct:getPersonOverallPct(l),overdueCourses:getPersonOverdueCourses(l,today)}));
+  const totalOverdue=enriched.reduce((s,l)=>s+l.overdueCourses.length,0);
+
+  const tabs=[
+    {id:'overview',label:'Overview'},
+    {id:'overdue',label:'Overdue'+(totalOverdue?` (${totalOverdue})`:'')},
+    {id:'course',label:'By Course'},
+    {id:'learner',label:'By Learner'},
+  ];
+  const tabBar=`<div style="display:flex;gap:2px;background:var(--surface2);border-radius:var(--radius-lg);padding:4px;margin-bottom:20px">
+    ${tabs.map(t=>`<button onclick="goReport('${t.id}')" style="flex:1;padding:7px 10px;border-radius:var(--radius);border:none;cursor:pointer;font-size:13px;font-weight:${_rptTab===t.id?'600':'400'};transition:all 0.15s;background:${_rptTab===t.id?'var(--surface)':'transparent'};color:${_rptTab===t.id?(t.id==='overdue'&&totalOverdue?'var(--danger)':'var(--text)'):'var(--text2)'};box-shadow:${_rptTab===t.id?'0 1px 3px rgba(0,0,0,0.1)':'none'}">${t.label}</button>`).join('')}
+  </div>`;
+
+  let content='';
+  if(_rptTab==='overview') content=_rptOverview(enriched);
+  else if(_rptTab==='overdue') content=_rptOverdue(enriched);
+  else if(_rptTab==='course') content=_rptCourseView(_rptCourse,enriched);
+  else if(_rptTab==='learner') content=_rptLearnerView(_rptLearner,enriched);
+  c.innerHTML=tabBar+content;
+}
+
+function _rptOverview(enriched){
+  const total=enriched.length;
+  const done=enriched.filter(l=>l.pct===100).length;
+  const inProg=enriched.filter(l=>l.pct>0&&l.pct<100).length;
+  const notStarted=enriched.filter(l=>l.pct===0).length;
+  const overdueCount=enriched.filter(l=>l.overdueCourses.length>0).length;
 
   const depts={};
-  teamMembers.forEach(l=>{
-    if(!depts[l.dept]) depts[l.dept]={total:0,complete:0};
+  enriched.forEach(l=>{
+    if(!depts[l.dept]) depts[l.dept]={total:0,done:0};
     depts[l.dept].total++;
-    if(l.status==='complete') depts[l.dept].complete++;
+    if(l.pct===100) depts[l.dept].done++;
   });
 
-  c.innerHTML=`
-  <!-- Metrics -->
+  const courseData=COURSES.map(co=>{
+    const assigned=enriched.filter(l=>l.assignedCourses?.includes(co.id));
+    const completed=assigned.filter(l=>getPersonCoursePct(l.email,co.id)===100).length;
+    const pct=assigned.length?Math.round(completed/assigned.length*100):0;
+    return {co,assigned:assigned.length,completed,pct};
+  }).filter(x=>x.assigned>0);
+
+  return `
   <div class="grid4 section-gap">
-    <div class="metric-card"><div class="metric-label">Total Team</div><div class="metric-value">${total}</div></div>
-    <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value" style="color:var(--success)">${completed}</div><div class="metric-delta">${total?Math.round(completed/total*100):0}% of team</div></div>
-    <div class="metric-card"><div class="metric-label">In Progress</div><div class="metric-value" style="color:var(--accent)">${inProgress}</div></div>
-    <div class="metric-card"><div class="metric-label">Overdue</div><div class="metric-value" style="color:${overdue?'var(--danger)':'var(--success)'}">${overdue}</div><div class="metric-delta ${overdue?'down':'up'}">${overdue?'Need follow-up':'All on track ✓'}</div></div>
+    <div class="metric-card"><div class="metric-label">Total Learners</div><div class="metric-value">${total}</div></div>
+    <div class="metric-card"><div class="metric-label">Completed All</div><div class="metric-value" style="color:var(--success)">${done}</div><div class="metric-delta up">${total?Math.round(done/total*100):0}% of team</div></div>
+    <div class="metric-card"><div class="metric-label">In Progress</div><div class="metric-value" style="color:var(--accent)">${inProg}</div><div class="metric-delta">${notStarted} not started</div></div>
+    <div class="metric-card"><div class="metric-label">Overdue</div><div class="metric-value" style="color:${overdueCount?'var(--danger)':'var(--success)'}">${overdueCount}</div><div class="metric-delta ${overdueCount?'down':'up'}">${overdueCount?'Need follow-up':'All on track ✓'}</div></div>
   </div>
 
-  <!-- Full width team table -->
   <div class="card section-gap">
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-      <div class="card-title" style="margin:0">Team Progress</div>
-      <div style="font-size:12px;color:var(--text3)">Click any column to sort</div>
+      <div class="card-title" style="margin:0">All Learners</div>
+      <div style="font-size:12px;color:var(--text3)">Click a row to see full breakdown</div>
     </div>
-    <div class="table-wrap">
-      <table id="reportTeamTable">
-        <thead><tr>
-          <th onclick="sortReportTable(0)" style="cursor:pointer">Name <span id="rs0">↕</span></th>
-          <th onclick="sortReportTable(1)" style="cursor:pointer">Department <span id="rs1">↕</span></th>
-          <th onclick="sortReportTable(2)" style="cursor:pointer">Progress <span id="rs2">↕</span></th>
-          <th onclick="sortReportTable(3)" style="cursor:pointer">Overdue <span id="rs3">↕</span></th>
-          <th onclick="sortReportTable(4)" style="cursor:pointer">Status <span id="rs4">↕</span></th>
-        </tr></thead>
-        <tbody id="reportTeamBody">
-          ${[...teamMembers].sort((a,b)=>b.prog-a.prog).map(l=>`
-          <tr>
-            <td><div style="display:flex;align-items:center;gap:8px">
-              <div class="av av-sm" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
-              <div><div style="font-weight:500">${l.name}</div><div style="font-size:11px;color:var(--text3)">${l.title}</div></div>
-            </div></td>
-            <td>${l.dept}</td>
-            <td>
-              <div style="display:flex;align-items:center;gap:8px">
-                <div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">
-                  <div style="height:100%;background:${l.prog===100?'var(--success)':'var(--brand-gold)'};width:${l.prog}%"></div>
-                </div>
-                <span style="font-size:12px;color:var(--text2)">${l.prog}%</span>
-              </div>
-            </td>
-            <td>${l.overdue>0?`<span class="badge badge-danger">${l.overdue} overdue</span>`:`<span style="font-size:12px;color:var(--text3)">—</span>`}</td>
-            <td><span class="badge ${l.status==='complete'?'badge-success':l.overdue>0?'badge-danger':l.status==='not-started'?'badge-gray':'badge-warn'}">${l.status==='complete'?'✓ Done':l.overdue>0?'Overdue':l.status==='not-started'?'Not Started':'In Progress'}</span></td>
-          </tr>`).join('')}
-        </tbody>
-      </table>
-    </div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Name</th><th>Department</th><th>Progress</th><th>Overdue</th><th>Status</th>
+    </tr></thead><tbody>
+      ${[...enriched].sort((a,b)=>b.pct-a.pct).map(l=>{
+        const status=l.pct===100?'complete':l.overdueCourses.length?'overdue':l.pct>0?'in-progress':'not-started';
+        return `<tr onclick="goReport('learner',{learner:'${l.email}'})" style="cursor:pointer">
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div class="av av-sm" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
+            <div><div style="font-weight:500">${l.name}</div><div style="font-size:11px;color:var(--text3)">${l.title}</div></div>
+          </div></td>
+          <td>${l.dept}</td>
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">
+              <div style="height:100%;background:${l.pct===100?'var(--success)':'var(--brand-gold)'};width:${l.pct}%"></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2)">${l.pct}%</span>
+          </div></td>
+          <td>${l.overdueCourses.length?`<span class="badge badge-danger">${l.overdueCourses.length} overdue</span>`:`<span style="font-size:12px;color:var(--text3)">—</span>`}</td>
+          <td><span class="badge ${status==='complete'?'badge-success':status==='overdue'?'badge-danger':status==='not-started'?'badge-gray':'badge-warn'}">${status==='complete'?'✓ Done':status==='overdue'?'Overdue':status==='not-started'?'Not Started':'In Progress'}</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>
   </div>
 
-  <!-- Two smaller cards below -->
   <div class="grid2">
     <div class="card">
       <div class="card-title">By Department</div>
       ${Object.entries(depts).sort((a,b)=>b[1].total-a[1].total).map(([dept,d])=>{
-        const pct=Math.round(d.complete/d.total*100);
+        const pct=Math.round(d.done/d.total*100);
         return `<div style="margin-bottom:14px">
           <div style="display:flex;justify-content:space-between;font-size:13px;margin-bottom:5px">
-            <span style="font-weight:500">${dept}</span>
-            <span style="color:var(--text2)">${d.complete}/${d.total} · ${pct}%</span>
+            <span style="font-weight:500">${dept}</span><span style="color:var(--text2)">${d.done}/${d.total} · ${pct}%</span>
           </div>
-          <div class="progress-bar" style="height:8px;margin:0"><div class="progress-fill ${pct===100?'green':pct>50?'':'amber'}" style="width:${pct}%"></div></div>
+          <div class="progress-bar" style="height:8px;margin:0"><div class="progress-fill ${pct===100?'green':''}" style="width:${pct}%"></div></div>
         </div>`;
       }).join('')}
     </div>
-
     <div class="card">
       <div class="card-title">By Course</div>
-      ${COURSES.map(co=>{
-        const enrolled=teamMembers.filter(l=>l.assignedCourses?.includes(co.id)).length;
-        const done=teamMembers.filter(l=>l.assignedCourses?.includes(co.id)&&l.status==='complete').length;
-        const pct=enrolled?Math.round(done/enrolled*100):0;
-        return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:10px">Click to drill down</div>
+      ${courseData.map(({co,assigned,completed,pct})=>`
+        <div onclick="goReport('course',{course:${co.id}})" style="display:flex;align-items:center;gap:10px;margin-bottom:12px;cursor:pointer;padding:6px 8px;border-radius:var(--radius);transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
           <div style="font-size:20px;flex-shrink:0">${co.emoji}</div>
           <div style="flex:1;min-width:0">
             <div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:4px">
-              <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:180px">${co.title}</span>
-              <span style="color:var(--text2);flex-shrink:0;margin-left:6px">${done}/${enrolled} · ${pct}%</span>
+              <span style="font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:170px">${co.title}</span>
+              <span style="color:var(--text2);flex-shrink:0;margin-left:6px">${completed}/${assigned} · ${pct}%</span>
             </div>
             <div class="progress-bar" style="height:6px;margin:0"><div class="progress-fill ${pct===100?'green':''}" style="width:${pct}%"></div></div>
           </div>
-        </div>`;
-      }).join('')}
+        </div>`).join('')}
     </div>
   </div>`;
 }
 
-let _reportSortCol=-1, _reportSortAsc=true;
-function sortReportTable(col){
-  const body=document.getElementById('reportTeamBody');
-  if(!body) return;
-  _reportSortAsc=_reportSortCol===col?!_reportSortAsc:true;
-  _reportSortCol=col;
-  [0,1,2,3,4].forEach(i=>{
-    const el=document.getElementById('rs'+i);
-    if(el) el.textContent=i===col?(_reportSortAsc?'↑':'↓'):'↕';
-  });
-  const rows=[...body.querySelectorAll('tr')];
-  rows.sort((a,b)=>{
-    const aVal=a.cells[col]?.textContent.trim()||'';
-    const bVal=b.cells[col]?.textContent.trim()||'';
-    if(col===2||col===3) return (_reportSortAsc?1:-1)*(parseInt(aVal)||0-(parseInt(bVal)||0));
-    return (_reportSortAsc?1:-1)*aVal.localeCompare(bVal);
-  });
-  rows.forEach(r=>body.appendChild(r));
+function _rptOverdue(enriched){
+  const items=[];
+  enriched.forEach(l=>l.overdueCourses.forEach(od=>items.push({l,...od})));
+  items.sort((a,b)=>b.daysOverdue-a.daysOverdue);
+
+  if(!items.length) return `<div class="empty-state" style="margin-top:32px">
+    <div class="empty-state-icon">✅</div>
+    <div class="empty-state-title">No overdue items</div>
+    <div class="empty-state-sub">All learners are on track with their due dates.</div>
+  </div>`;
+
+  return `<div class="card">
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div class="card-title" style="margin:0">Overdue Items</div>
+      <span class="badge badge-danger">${items.length} total</span>
+    </div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Learner</th><th>Course</th><th>Due Date</th><th>Days Overdue</th><th>Progress</th>
+    </tr></thead><tbody>
+      ${items.map(({l,co,daysOverdue,pct})=>`
+      <tr>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div class="av av-sm" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
+          <div><div style="font-weight:500">${l.name}</div><div style="font-size:11px;color:var(--text3)">${l.title}</div></div>
+        </div></td>
+        <td><div style="display:flex;align-items:center;gap:6px"><span>${co.emoji}</span><span style="font-size:13px">${co.title}</span></div></td>
+        <td style="font-size:12px;color:var(--text2)">${co.dueDate}</td>
+        <td><span class="badge badge-danger">${daysOverdue}d overdue</span></td>
+        <td><div style="display:flex;align-items:center;gap:8px">
+          <div style="width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+            <div style="height:100%;background:var(--danger);width:${pct}%"></div>
+          </div>
+          <span style="font-size:12px;color:var(--text2)">${pct}%</span>
+        </div></td>
+      </tr>`).join('')}
+    </tbody></table></div>
+  </div>`;
+}
+
+function _rptCourseView(courseId,enriched){
+  if(courseId==null){
+    const courseData=COURSES.map(co=>{
+      const assigned=enriched.filter(l=>l.assignedCourses?.includes(co.id));
+      const done=assigned.filter(l=>getPersonCoursePct(l.email,co.id)===100).length;
+      const pct=assigned.length?Math.round(done/assigned.length*100):0;
+      return {co,assigned:assigned.length,done,pct};
+    }).filter(x=>x.assigned>0);
+    return `<div class="card">
+      <div class="card-title" style="margin-bottom:16px">Select a Course to Drill Down</div>
+      <div class="grid2">
+        ${courseData.map(({co,assigned,done,pct})=>`
+          <div onclick="goReport('course',{course:${co.id}})" style="border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;cursor:pointer;transition:border-color 0.15s" onmouseover="this.style.borderColor='var(--brand-gold)'" onmouseout="this.style.borderColor='var(--border)'">
+            <div style="display:flex;align-items:center;gap:10px;margin-bottom:10px">
+              <div style="width:36px;height:36px;border-radius:8px;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${co.emoji}</div>
+              <div style="font-size:13px;font-weight:600;line-height:1.3">${co.title}</div>
+            </div>
+            <div class="progress-bar" style="margin:0 0 6px"><div class="progress-fill ${pct===100?'green':''}" style="width:${pct}%"></div></div>
+            <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text3)">
+              <span>${done}/${assigned} completed</span><span>${pct}%</span>
+            </div>
+          </div>`).join('')}
+      </div>
+    </div>`;
+  }
+
+  const co=COURSES.find(c=>c.id===courseId);
+  if(!co) return '';
+  const assigned=enriched.filter(l=>l.assignedCourses?.includes(co.id));
+  const mods=(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status);
+  const totalDone=assigned.filter(l=>getPersonCoursePct(l.email,co.id)===100).length;
+  const avgPct=assigned.length?Math.round(assigned.reduce((s,l)=>s+getPersonCoursePct(l.email,co.id),0)/assigned.length):0;
+
+  return `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+    <button class="btn btn-sm" onclick="goReport('course',{course:null})" style="flex-shrink:0">← Back</button>
+    <div style="width:36px;height:36px;border-radius:8px;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${co.emoji}</div>
+    <div><div style="font-size:16px;font-weight:700">${co.title}</div><div style="font-size:12px;color:var(--text3)">${co.cat} · ${mods.length} modules</div></div>
+  </div>
+  <div class="grid4 section-gap" style="margin-bottom:20px">
+    <div class="metric-card"><div class="metric-label">Assigned</div><div class="metric-value">${assigned.length}</div></div>
+    <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value" style="color:var(--success)">${totalDone}</div></div>
+    <div class="metric-card"><div class="metric-label">Avg Progress</div><div class="metric-value" style="color:var(--accent)">${avgPct}%</div></div>
+    <div class="metric-card"><div class="metric-label">Not Started</div><div class="metric-value">${assigned.filter(l=>getPersonCoursePct(l.email,co.id)===0).length}</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">Learner Breakdown</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Learner</th><th>Department</th><th>Progress</th><th>Modules Done</th><th>Status</th>
+    </tr></thead><tbody>
+      ${[...assigned].sort((a,b)=>getPersonCoursePct(b.email,co.id)-getPersonCoursePct(a.email,co.id)).map(l=>{
+        const pct=getPersonCoursePct(l.email,co.id);
+        const modsDone=(LEARNER_PROGRESS_BY_EMAIL[l.email]?.[co.id]||[]).length;
+        const isOverdue=l.overdueCourses.some(od=>od.id===co.id);
+        const status=pct===100?'complete':isOverdue?'overdue':pct>0?'in-progress':'not-started';
+        return `<tr onclick="goReport('learner',{learner:'${l.email}'})" style="cursor:pointer">
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div class="av av-sm" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
+            <div><div style="font-weight:500">${l.name}</div><div style="font-size:11px;color:var(--text3)">${l.title}</div></div>
+          </div></td>
+          <td>${l.dept}</td>
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">
+              <div style="height:100%;background:${pct===100?'var(--success)':'var(--brand-gold)'};width:${pct}%"></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2)">${pct}%</span>
+          </div></td>
+          <td style="font-size:12px;color:var(--text2)">${modsDone} / ${mods.length}</td>
+          <td><span class="badge ${status==='complete'?'badge-success':status==='overdue'?'badge-danger':status==='not-started'?'badge-gray':'badge-warn'}">${status==='complete'?'✓ Done':status==='overdue'?'Overdue':status==='not-started'?'Not Started':'In Progress'}</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>
+  </div>`;
+}
+
+function _rptLearnerView(email,enriched){
+  if(email==null){
+    return `<div class="card">
+      <div class="card-title" style="margin-bottom:16px">Select a Learner to Drill Down</div>
+      ${[...enriched].sort((a,b)=>a.name.localeCompare(b.name)).map(l=>`
+        <div onclick="goReport('learner',{learner:'${l.email}'})" style="display:flex;align-items:center;gap:10px;padding:10px 12px;border-radius:var(--radius);cursor:pointer;transition:background 0.1s" onmouseover="this.style.background='var(--surface2)'" onmouseout="this.style.background='transparent'">
+          <div class="av av-sm" style="background:${l.bg};color:${l.tc}">${l.ini}</div>
+          <div style="flex:1"><div style="font-size:13px;font-weight:500">${l.name}</div><div style="font-size:11px;color:var(--text3)">${l.title} · ${l.dept}</div></div>
+          <div style="display:flex;align-items:center;gap:8px">
+            <div style="width:60px;height:5px;background:var(--border);border-radius:3px;overflow:hidden">
+              <div style="height:100%;background:${l.pct===100?'var(--success)':'var(--brand-gold)'};width:${l.pct}%"></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2);width:30px;text-align:right">${l.pct}%</span>
+          </div>
+          ${l.overdueCourses.length?`<span class="badge badge-danger">${l.overdueCourses.length} overdue</span>`:''}
+        </div>`).join('')}
+    </div>`;
+  }
+
+  const l=enriched.find(x=>x.email===email);
+  if(!l) return '';
+  const assigned=(l.assignedCourses||[]).map(id=>COURSES.find(c=>c.id===id)).filter(Boolean);
+
+  return `
+  <div style="display:flex;align-items:center;gap:10px;margin-bottom:18px">
+    <button class="btn btn-sm" onclick="goReport('learner',{learner:null})" style="flex-shrink:0">← Back</button>
+    <div class="av" style="background:${l.bg};color:${l.tc};width:40px;height:40px;font-size:14px;flex-shrink:0">${l.ini}</div>
+    <div><div style="font-size:16px;font-weight:700">${l.name}</div><div style="font-size:12px;color:var(--text3)">${l.title} · ${l.dept}</div></div>
+    ${l.overdueCourses.length?`<span class="badge badge-danger" style="margin-left:auto">${l.overdueCourses.length} overdue</span>`:'<span class="badge badge-success" style="margin-left:auto">On track ✓</span>'}
+  </div>
+  <div class="grid4 section-gap" style="margin-bottom:20px">
+    <div class="metric-card"><div class="metric-label">Courses Assigned</div><div class="metric-value">${assigned.length}</div></div>
+    <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value" style="color:var(--success)">${assigned.filter(co=>getPersonCoursePct(l.email,co.id)===100).length}</div></div>
+    <div class="metric-card"><div class="metric-label">Overall Progress</div><div class="metric-value" style="color:var(--accent)">${l.pct}%</div></div>
+    <div class="metric-card"><div class="metric-label">Overdue</div><div class="metric-value" style="color:${l.overdueCourses.length?'var(--danger)':'var(--success)'}">${l.overdueCourses.length}</div></div>
+  </div>
+  <div class="card">
+    <div class="card-title" style="margin-bottom:14px">Course Breakdown</div>
+    <div class="table-wrap"><table><thead><tr>
+      <th>Course</th><th>Progress</th><th>Modules</th><th>Due Date</th><th>Status</th>
+    </tr></thead><tbody>
+      ${assigned.map(co=>{
+        const pct=getPersonCoursePct(l.email,co.id);
+        const mods=(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status);
+        const modsDone=(LEARNER_PROGRESS_BY_EMAIL[l.email]?.[co.id]||[]).length;
+        const od=l.overdueCourses.find(x=>x.id===co.id);
+        const status=pct===100?'complete':od?'overdue':pct>0?'in-progress':'not-started';
+        return `<tr>
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div style="width:28px;height:28px;border-radius:6px;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${co.emoji}</div>
+            <span style="font-size:13px;font-weight:500">${co.title}</span>
+          </div></td>
+          <td><div style="display:flex;align-items:center;gap:8px">
+            <div style="width:80px;height:6px;background:var(--border);border-radius:3px;overflow:hidden;flex-shrink:0">
+              <div style="height:100%;background:${pct===100?'var(--success)':'var(--brand-gold)'};width:${pct}%"></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2)">${pct}%</span>
+          </div></td>
+          <td style="font-size:12px;color:var(--text2)">${modsDone} / ${mods.length}</td>
+          <td style="font-size:12px;color:${od?'var(--danger)':'var(--text2)'}">${co.dueDate?co.dueDate+(od?` (+${od.daysOverdue}d)`:''):'—'}</td>
+          <td><span class="badge ${status==='complete'?'badge-success':status==='overdue'?'badge-danger':status==='not-started'?'badge-gray':'badge-warn'}">${status==='complete'?'✓ Done':status==='overdue'?'Overdue':status==='not-started'?'Not Started':'In Progress'}</span></td>
+        </tr>`;
+      }).join('')}
+    </tbody></table></div>
+  </div>`;
 }
 
 function renderMyCourses(c){
