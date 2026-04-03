@@ -4922,6 +4922,7 @@ async function loadSupabaseData(){
         bg:p.bg||'#dbeafe', tc:p.tc||'#1a4fa0',
         dept:p.dept||'', title:p.title||'',
         email:p.email, manager:p.manager||'',
+        role:p.role||'learner',
         start:p.start_date||'', prog:p.prog||0,
         overdue:p.overdue||0, status:p.status||'not-started',
         account:p.account||'active',
@@ -4947,8 +4948,20 @@ async function loadSupabaseData(){
     await loadProgressFromSupabase();
 
     // Re-render current page with fresh data + progress
+    // Recover role if savePersonModal accidentally wrote 'learner' to an admin profile
+    if(currentProfile && currentProfile.role === 'learner'){
+      const myLearner = LEARNERS.find(l=>l.email===currentProfile.email);
+      if(myLearner && myLearner.role && myLearner.role !== 'learner'){
+        currentProfile.role = myLearner.role;
+        await sb.from('profiles').update({role: myLearner.role}).eq('email', currentProfile.email);
+        console.log('✅ Restored role to', myLearner.role);
+      }
+    }
+
+    // Re-render the current page with fresh data — do NOT call switchRole here
+    // to avoid overriding a role the user manually selected via the dropdown
     const mainContent = document.getElementById('mainContent');
-    if(mainContent) switchRole(currentProfile?.role || S.role);
+    if(mainContent) go(S.page);
     renderNotifPanel(); // refresh bell count with real progress
     console.log('✅ Supabase data loaded');
   } catch(e){
