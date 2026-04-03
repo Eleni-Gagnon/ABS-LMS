@@ -300,9 +300,10 @@ function switchRole(role){
 }
 
 function renderNav(){
-  // Role switcher is an admin-only dev tool — hide it for all other roles
+  // Role switcher is only for users whose actual Supabase role is admin
+  // Use S.actualRole so it stays visible even when previewing as Learner
   const rs=document.getElementById('roleSwitcher');
-  if(rs) rs.style.display=S.role==='admin'?'':'none';
+  if(rs) rs.style.display=(S.actualRole||S.role)==='admin'?'':'none';
 
   const el=document.getElementById('sidebarNav');
   const items=NAV[S.role];
@@ -5122,6 +5123,7 @@ function applyProfile(profile){
     LEARNERS[learnerIdx].assignedCourses = profile.assigned_courses || [1,2,5,6,7,8,9];
   }
 
+  S.actualRole = role; // permanent record of the user's real Supabase role
   hideLogin();
   switchRole(role);
   loadSupabaseData();
