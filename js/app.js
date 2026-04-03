@@ -111,11 +111,14 @@ const NAV = {
   ],
   manager:[
     {icon:'📊',label:'Dashboard',page:'dashboard'},
-    {icon:'📢',label:'Announcements',page:'announcements'},
-    {icon:'🗂️',label:'Course Library',page:'courses'},
     {icon:'👤',label:'My Team',page:'people'},
     {icon:'📈',label:'Team Reports',page:'reports'},
     {icon:'📧',label:'EOD Report',page:'eod',sub:true},
+    {icon:'📢',label:'Announcements',page:'announcements'},
+    {divider:'My Learning'},
+    {icon:'📚',label:'My Courses',page:'my-courses'},
+    {icon:'📖',label:'Policies & Processes',page:'playbook'},
+    {icon:'🏆',label:'Completed',page:'completed'},
   ],
   learner:[
     {icon:'🏠',label:'My Dashboard',page:'dashboard'},
@@ -223,7 +226,7 @@ function getLearnerNotifs(){
 }
 
 function renderNotifPanel(){
-  const notifs=S.role==='learner'?getLearnerNotifs():NOTIFICATIONS;
+  const notifs=(S.role==='learner'||S.role==='manager')?getLearnerNotifs():NOTIFICATIONS;
   const unread=notifs.filter(n=>n.unread).length;
   const dot=document.getElementById('bellDot');
   if(dot) dot.style.display=unread>0?'block':'none';
@@ -258,8 +261,7 @@ function closeNotifOnOutside(e){
 }
 
 function clickNotif(id,action){
-  if(S.role==='learner'){
-    // mark this notif dismissed (read)
+  if(S.role==='learner'||S.role==='manager'){
     if(!S.dismissedNotifs.includes(id)) S.dismissedNotifs.push(id);
   } else {
     const n=NOTIFICATIONS.find(x=>x.id===parseInt(id));
@@ -271,7 +273,7 @@ function clickNotif(id,action){
 }
 
 function markAllRead(){
-  if(S.role==='learner'){
+  if(S.role==='learner'||S.role==='manager'){
     getLearnerNotifs().forEach(n=>{if(!S.dismissedNotifs.includes(n.id))S.dismissedNotifs.push(n.id);});
   } else {
     NOTIFICATIONS.forEach(n=>n.unread=false);
@@ -301,6 +303,7 @@ function renderNav(){
   if(S.navCollapsed===undefined) S.navCollapsed={};
 
   el.innerHTML=items.map(n=>{
+    if(n.divider) return `<div class="nav-section-label" style="margin-top:10px;border-top:1px solid #1a1a1a;padding-top:10px">${n.divider}</div>`;
     if(n.sub){
       // find if parent is collapsed
       const parentPage=items[items.indexOf(n)-1]?.page;
@@ -342,7 +345,7 @@ function go(page){
     eod:'EOD Report',
     signoffs:'EOD Report',
     policies:'Policies & Processes',
-    playbook:S.role==='learner'?'Policies & Processes':'Course Library',
+    playbook:(S.role==='learner'||S.role==='manager')?'Policies & Processes':'Course Library',
     'playbook-create':'Add Subject',
     reports:'Reports & Analytics',
     'my-courses':'My Courses','course-detail':'Continue Learning',completed:'Completed Courses'
@@ -590,7 +593,47 @@ function renderDashboard(c){
         }).join('')}
         <button class="btn btn-sm" style="width:100%;margin-top:8px" onclick="go('reports')">View Full Reports →</button>
       </div>
-    </div>`;
+    </div>
+    ${S.role==='manager'?(()=>{
+      const learner=LEARNERS.find(l=>l.name===u.name)||LEARNERS[0];
+      const assignedIds=learner?.assignedCourses||[];
+      const assignedCourses=COURSES.filter(co=>assignedIds.includes(co.id));
+      const overallPct=assignedCourses.length?(()=>{
+        const total=assignedCourses.reduce((s,co)=>{
+          return s+(COURSE_MODULES[co.id]||[]).filter(m=>m.status==='published'||!m.status).length;
+        },0);
+        const done=assignedCourses.reduce((s,co)=>{
+          return s+(S.completedModules?.[co.id]||[]).length;
+        },0);
+        return total?Math.round(done/total*100):0;
+      })():0;
+      return `
+      <div class="card" style="margin-top:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
+          <div class="card-title" style="margin:0">My Learning</div>
+          <button class="btn btn-sm" onclick="go('my-courses')">View All →</button>
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;padding:12px;background:var(--surface2);border-radius:var(--radius-lg);margin-bottom:14px">
+          <div style="flex:1">
+            <div style="font-size:12px;color:var(--text3);margin-bottom:4px">Overall Progress</div>
+            <div class="progress-bar" style="margin:0"><div class="progress-fill ${overallPct===100?'green':''}" style="width:${overallPct}%;background:${overallPct===100?'var(--success)':'var(--brand-gold)'}"></div></div>
+          </div>
+          <div style="font-size:18px;font-weight:700;color:var(--accent);min-width:40px;text-align:right">${overallPct}%</div>
+        </div>
+        ${assignedCourses.slice(0,4).map(co=>{
+          const pct=getCoursePct(co.id);
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:10px;cursor:pointer" onclick="openLearnerCourse(${co.id})">
+            <div style="width:28px;height:28px;border-radius:6px;background:${co.color};display:flex;align-items:center;justify-content:center;font-size:13px;flex-shrink:0">${co.emoji}</div>
+            <div style="flex:1;min-width:0">
+              <div style="font-size:12px;font-weight:500;margin-bottom:3px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${co.title}</div>
+              <div class="progress-bar" style="margin:0;height:4px"><div class="progress-fill" style="width:${pct}%;height:4px;background:${pct===100?'var(--success)':'var(--brand-gold)'}"></div></div>
+            </div>
+            <span style="font-size:11px;color:var(--text2);min-width:28px;text-align:right">${pct}%</span>
+          </div>`;
+        }).join('')}
+      </div>`;
+    })():''}
+    `;
   }
 }
 
@@ -4307,7 +4350,7 @@ const ANNOUNCEMENTS = [
 ];
 
 function renderAnnouncements(c){
-  const canPost=S.role==='admin'||S.role==='manager';
+  const canPost=S.role==='admin';
   const tr=document.getElementById('topbarRight');
   if(canPost) tr.innerHTML=`<button class="btn btn-primary btn-sm" onclick="openNewAnnouncement()">+ Post Announcement</button>`;
 
