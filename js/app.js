@@ -2410,25 +2410,25 @@ function openPersonModal(name){
 
     <div id="pm-profile" style="display:none">
       <div class="grid2">
-        <div class="form-group"><label class="form-label">Full Name</label><input type="text" value="${l.name}"></div>
-        <div class="form-group"><label class="form-label">Email Address</label><input type="email" value="${l.email}"></div>
+        <div class="form-group"><label class="form-label">Full Name</label><input id="pm-name" type="text" value="${l.name}"></div>
+        <div class="form-group"><label class="form-label">Email Address</label><input id="pm-email" type="email" value="${l.email}"></div>
       </div>
       <div class="grid2">
-        <div class="form-group"><label class="form-label">Job Title</label><input type="text" value="${l.title}"></div>
+        <div class="form-group"><label class="form-label">Job Title</label><input id="pm-title" type="text" value="${l.title}"></div>
         <div class="form-group"><label class="form-label">Department</label>
-          <select>${['Finance', 'Human Resources', 'Marketing', 'Operations', 'Sales'].map(d=>`<option${d===l.dept?' selected':''}>${d}</option>`).join('')}</select>
+          <select id="pm-dept">${['Finance', 'Human Resources', 'Marketing', 'Operations', 'Sales'].map(d=>`<option${d===l.dept?' selected':''}>${d}</option>`).join('')}</select>
         </div>
       </div>
       <div class="grid2">
         <div class="form-group"><label class="form-label">Assigned Manager</label>
-          <select>${['Eleni Gagnon','Sean Gagnon','Sean Kirby','Cynthia Ramos'].map(m=>`<option${m===l.manager?' selected':''}>${m}</option>`).join('')}</select>
+          <select id="pm-manager">${['Eleni Gagnon','Sean Gagnon','Sean Kirby','Cynthia Ramos'].map(m=>`<option${m===l.manager?' selected':''}>${m}</option>`).join('')}</select>
         </div>
         <div class="form-group"><label class="form-label">Start / Hire Date</label>
-          <input type="date" value="${toDateInput(l.start)}" style="cursor:pointer">
+          <input id="pm-start" type="date" value="${toDateInput(l.start)}" style="cursor:pointer">
         </div>
       </div>
       <div class="form-group"><label class="form-label">System Role</label>
-        <select><option>Learner</option><option>Manager</option><option>Admin</option><option>Executive</option></select>
+        <select id="pm-role"><option${l.role==='learner'||!l.role?' selected':''}>Learner</option><option${l.role==='manager'?' selected':''}>Manager</option><option${l.role==='admin'?' selected':''}>Admin</option><option${l.role==='executive'?' selected':''}>Executive</option></select>
       </div>
       <div class="form-group">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
@@ -2505,14 +2505,45 @@ function getPersonActivity(name){
   return ACTIVITY_LOG.filter(a=>a.learner===name);
 }
 
-function savePersonModal(name){
+async function savePersonModal(name){
   const l=LEARNERS.find(x=>x.name===name);
   if(!l) return;
+
+  // Read all profile fields
+  const newName=document.getElementById('pm-name')?.value.trim()||l.name;
+  const newEmail=document.getElementById('pm-email')?.value.trim()||l.email;
+  const newTitle=document.getElementById('pm-title')?.value.trim()||l.title;
+  const newDept=document.getElementById('pm-dept')?.value||l.dept;
+  const newManager=document.getElementById('pm-manager')?.value||l.manager;
+  const newStart=document.getElementById('pm-start')?.value||'';
+  const newRole=(document.getElementById('pm-role')?.value||'Learner').toLowerCase();
   const cbs=document.querySelectorAll('.course-assign-cb');
-  if(cbs.length) l.assignedCourses=[...cbs].filter(cb=>cb.checked).map(cb=>parseInt(cb.dataset.id));
+  const newCourses=cbs.length?[...cbs].filter(cb=>cb.checked).map(cb=>parseInt(cb.dataset.id)):l.assignedCourses;
+
+  // Capture original email before mutating (used as lookup key)
+  const originalEmail=l.email;
+
+  // Update in-memory LEARNERS record
+  l.name=newName; l.email=newEmail; l.title=newTitle;
+  l.dept=newDept; l.manager=newManager; l.role=newRole;
+  l.assignedCourses=newCourses;
+  if(newStart) l.start=new Date(newStart).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'});
+
+  // Persist to Supabase profiles table
+  if(sb){
+    const {error}=await sb.from('profiles').update({
+      name:newName, email:newEmail, title:newTitle,
+      dept:newDept, manager:newManager, role:newRole,
+      start_date:newStart||null,
+      assigned_courses:newCourses
+    }).eq('email',originalEmail);
+    if(error) console.warn('Profile save error:',error);
+  }
+
   lsSave();
-  toast('Changes saved for '+name+'!');
+  toast('Changes saved for '+newName+'!');
   closeModal();
+  renderPeople(document.getElementById('mainContent'));
 }
 
 
