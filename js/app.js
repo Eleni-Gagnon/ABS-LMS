@@ -38,6 +38,12 @@ function getModQuizState(courseId, modIdx){
   return S.quizStates[key];
 }
 
+// Hardcoded role overrides — these take priority over whatever is in Supabase.
+// Use this to ensure admins always get the right role even if their profile row got corrupted.
+const ROLE_OVERRIDES = {
+  'eleni@theabscompany.com': 'admin',
+};
+
 const USERS = {
   admin:{name:'Eleni Gagnon',initials:'EG',role:'Admin',avBg:'#dbeafe',avCol:'#1a4fa0'},
   manager:{name:'Sean Kirby',initials:'SK',role:'VP of Sales',avBg:'#faeeda',avCol:'#8a5a00'},
@@ -5105,8 +5111,14 @@ async function loadProfile(user){
 
 
 function applyProfile(profile){
-  // Map Supabase profile to app's role system
-  const role = profile.role || 'learner';
+  // Hardcoded overrides take priority over Supabase role field
+  const role = ROLE_OVERRIDES[profile.email] || profile.role || 'learner';
+  // If Supabase has the wrong value, fix it in the background
+  if(ROLE_OVERRIDES[profile.email] && profile.role !== role){
+    sb.from('profiles').update({role}).eq('email', profile.email).then(()=>
+      console.log('✅ Fixed Supabase role for', profile.email, '→', role)
+    );
+  }
 
   // Override USERS with real profile data
   USERS[role] = {
