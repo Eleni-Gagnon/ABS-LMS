@@ -1072,6 +1072,8 @@ function filterCourses(search='', cat=''){
 }
 
 function getCoursePct(courseId){
+  // If the course was previously marked complete, honour that even if new modules were added later
+  if(S.completedCourses?.[courseId]) return 100;
   const mods=(COURSE_MODULES[courseId]||[]).filter(m=>m.status==='published'||!m.status);
   if(!mods.length) return 0;
   const done=(S.completedModules?.[courseId]||[]).length;
@@ -1080,8 +1082,12 @@ function getCoursePct(courseId){
 
 // Cache of all learners' progress loaded from Supabase: email → { courseId: completedModuleIndices[] }
 const LEARNER_PROGRESS_BY_EMAIL = {};
+// Tracks which courses each learner has fully completed (from Supabase course_completed flag)
+const LEARNER_COURSE_DONE_BY_EMAIL = {};
 
 function getPersonCoursePct(email, courseId){
+  // If the course was previously marked complete, honour that even if new modules were added later
+  if(LEARNER_COURSE_DONE_BY_EMAIL[email]?.[courseId]) return 100;
   const done=(LEARNER_PROGRESS_BY_EMAIL[email]?.[courseId]||[]).length;
   const mods=(COURSE_MODULES[courseId]||[]).filter(m=>m.status==='published'||!m.status);
   return mods.length?Math.round(done/mods.length*100):0;
@@ -5393,6 +5399,10 @@ async function loadSupabaseData(){
         if(!email) return;
         if(!LEARNER_PROGRESS_BY_EMAIL[email]) LEARNER_PROGRESS_BY_EMAIL[email]={};
         LEARNER_PROGRESS_BY_EMAIL[email][p.course_id]=p.completed_modules||[];
+        if(p.course_completed){
+          if(!LEARNER_COURSE_DONE_BY_EMAIL[email]) LEARNER_COURSE_DONE_BY_EMAIL[email]={};
+          LEARNER_COURSE_DONE_BY_EMAIL[email][p.course_id]=true;
+        }
       });
     }
 
