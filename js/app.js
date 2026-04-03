@@ -25,7 +25,8 @@ const S = {
   completedCourses:{},
   uploads:{},
   formResponses:{},
-  courseDrafts:{}
+  courseDrafts:{},
+  dismissedNotifs:[]
 };
 
 // Returns (creating if needed) the quiz state for a specific module
@@ -45,11 +46,11 @@ const USERS = {
 };
 
 const COURSES = [
-  {id:1, emoji:'🏢',title:'Who We Are, What We Do & How We Do It', cat:'Onboarding',color:'#dbeafe',mods:7,dur:'45 minutes',enrolled:18,completed:0},
+  {id:1, emoji:'🏢',title:'Who We Are, What We Do & How We Do It', cat:'Onboarding',color:'#dbeafe',mods:7,dur:'45 minutes',enrolled:18,completed:0,dueDate:'2026-03-20'},
   {id:2, emoji:'⭐',title:'Core Values',                    cat:'Onboarding',color:'#fef3dc',mods:3,dur:'15 minutes',enrolled:18,completed:0},
-  {id:5, emoji:'🗓️',title:'Your First Week',               cat:'Onboarding',color:'#e1f5ee',mods:4,dur:'25 minutes',enrolled:18,completed:0},
+  {id:5, emoji:'🗓️',title:'Your First Week',               cat:'Onboarding',color:'#e1f5ee',mods:4,dur:'25 minutes',enrolled:18,completed:0,dueDate:'2026-04-15'},
   {id:6, emoji:'🛠️',title:'Tools We Use',                  cat:'Onboarding',color:'#faeeda',mods:3,dur:'20 minutes',enrolled:18,completed:0},
-  {id:7, emoji:'📋',title:'Policies & Expectations',       cat:'Onboarding',color:'#fdeaea',mods:4,dur:'30 minutes',enrolled:18,completed:0},
+  {id:7, emoji:'📋',title:'Policies & Expectations',       cat:'Onboarding',color:'#fdeaea',mods:4,dur:'30 minutes',enrolled:18,completed:0,dueDate:'2026-04-04'},
   {id:8, emoji:'💰',title:'Compensation & Benefits',       cat:'Onboarding',color:'#e8f0fd',mods:4,dur:'25 minutes',enrolled:18,completed:0},
   {id:9, emoji:'🎯',title:'Your Role & Goals',             cat:'Onboarding',color:'#eaf3de',mods:3,dur:'20 minutes',enrolled:18,completed:0},
   {id:1774657566975,emoji:'📚',title:'Products',           cat:'Sales',     color:'#dbeafe',mods:1,dur:'30 minutes',enrolled:0,completed:0},
@@ -153,35 +154,96 @@ function closeSidebar(){
 }
 
 // ─── NOTIFICATIONS ─────────────────────────────────────────────────────────
+// Static admin/manager notifications
 const NOTIFICATIONS = [
-    {id:2,icon:'⚠️',text:'Sofia Marin is overdue on 2 courses',time:'1 hour ago',unread:true,action:'people'},
+  {id:2,icon:'⚠️',text:'Sofia Marin is overdue on 2 courses',time:'1 hour ago',unread:true,action:'people'},
   {id:3,icon:'📋',text:'Code of Conduct was updated — 3 team members yet to acknowledge',time:'2 hours ago',unread:true,action:'playbook'},
   {id:4,icon:'👤',text:'Lei Zhang is overdue on Compliance & Ethics',time:'Yesterday',unread:false,action:'people'},
   {id:5,icon:'🏆',text:'Marcus Webb completed all assigned courses',time:'Yesterday',unread:false,action:'people'},
 ];
 
+// Dynamically build learner notifications from live state
+function getLearnerNotifs(){
+  const learner=LEARNERS.find(l=>l.name===USERS[S.role].name)||LEARNERS[0];
+  const assignedIds=learner?.assignedCourses||[];
+  const today=new Date(); today.setHours(0,0,0,0);
+  const dismissed=S.dismissedNotifs||[];
+  const notifs=[];
+
+  assignedIds.forEach(id=>{
+    const co=COURSES.find(c=>c.id===id);
+    if(!co) return;
+    const pct=getCoursePct(id);
+    const isCompleted=!!(S.completedCourses?.[id]);
+
+    // Overdue course
+    if(co.dueDate && !isCompleted){
+      const due=new Date(co.dueDate); due.setHours(0,0,0,0);
+      const diffDays=Math.round((due-today)/(1000*60*60*24));
+      if(diffDays<0){
+        const nid=`overdue_${id}`;
+        notifs.push({id:nid,icon:'🚨',text:`"${co.title}" is overdue`,
+          time:`${Math.abs(diffDays)} day${Math.abs(diffDays)!==1?'s':''} past due`,
+          unread:!dismissed.includes(nid),action:'my-courses',priority:0});
+        return; // skip lower-priority checks for this course
+      }
+      // Due within 7 days
+      if(diffDays<=7){
+        const nid=`duesoon_${id}`;
+        notifs.push({id:nid,icon:'⏰',text:`"${co.title}" is due in ${diffDays} day${diffDays!==1?'s':''}`,
+          time:'Coming up',unread:!dismissed.includes(nid),action:'my-courses',priority:1});
+        return;
+      }
+    }
+
+    // Completed
+    if(isCompleted){
+      const nid=`done_${id}`;
+      notifs.push({id:nid,icon:'🏆',text:`You completed "${co.title}"`,
+        time:'Completed',unread:false,action:'completed',priority:4});
+      return;
+    }
+
+    // In progress
+    if(pct>0){
+      const nid=`inprogress_${id}`;
+      notifs.push({id:nid,icon:'▶️',text:`Continue "${co.title}" — ${pct}% done`,
+        time:'In progress',unread:false,action:'my-courses',priority:2});
+      return;
+    }
+
+    // Not started
+    const nid=`notstarted_${id}`;
+    notifs.push({id:nid,icon:'📚',text:`"${co.title}" hasn't been started yet`,
+      time:'Not started',unread:false,action:'my-courses',priority:3});
+  });
+
+  notifs.sort((a,b)=>a.priority-b.priority);
+  return notifs;
+}
+
 function renderNotifPanel(){
-  const unread=NOTIFICATIONS.filter(n=>n.unread).length;
+  const notifs=S.role==='learner'?getLearnerNotifs():NOTIFICATIONS;
+  const unread=notifs.filter(n=>n.unread).length;
   const dot=document.getElementById('bellDot');
   if(dot) dot.style.display=unread>0?'block':'none';
   const list=document.getElementById('notifList');
   if(!list) return;
-  list.innerHTML=NOTIFICATIONS.map(n=>`
-    <div class="notif-item ${n.unread?'unread':''}" onclick="clickNotif(${n.id})">
+  list.innerHTML=notifs.map(n=>`
+    <div class="notif-item ${n.unread?'unread':''}" onclick="clickNotif('${n.id}','${n.action}')">
       <div style="font-size:18px;flex-shrink:0">${n.icon}</div>
       <div style="flex:1;min-width:0">
         <div style="font-size:12px;line-height:1.4;color:var(--text)">${n.text}</div>
         <div style="font-size:11px;color:var(--text3);margin-top:2px">${n.time}</div>
       </div>
       ${n.unread?`<div class="notif-dot"></div>`:''}
-    </div>`).join('') || `<div style="padding:20px;text-align:center;font-size:13px;color:var(--text3)">All caught up! 🎉</div>`;
+    </div>`).join('')||`<div style="padding:20px;text-align:center;font-size:13px;color:var(--text3)">All caught up! 🎉</div>`;
 }
 
 function toggleNotifPanel(){
   const panel=document.getElementById('notifPanel');
   panel.classList.toggle('open');
   if(panel.classList.contains('open')) renderNotifPanel();
-  // close when clicking outside
   setTimeout(()=>{
     document.addEventListener('click',closeNotifOnOutside,{once:true});
   },0);
@@ -195,14 +257,25 @@ function closeNotifOnOutside(e){
   }
 }
 
-function clickNotif(id){
-  const n=NOTIFICATIONS.find(x=>x.id===id);
-  if(n){n.unread=false;renderNotifPanel();go(n.action);}
+function clickNotif(id,action){
+  if(S.role==='learner'){
+    // mark this notif dismissed (read)
+    if(!S.dismissedNotifs.includes(id)) S.dismissedNotifs.push(id);
+  } else {
+    const n=NOTIFICATIONS.find(x=>x.id===parseInt(id));
+    if(n) n.unread=false;
+  }
+  renderNotifPanel();
   document.getElementById('notifPanel').classList.remove('open');
+  go(action||'my-courses');
 }
 
 function markAllRead(){
-  NOTIFICATIONS.forEach(n=>n.unread=false);
+  if(S.role==='learner'){
+    getLearnerNotifs().forEach(n=>{if(!S.dismissedNotifs.includes(n.id))S.dismissedNotifs.push(n.id);});
+  } else {
+    NOTIFICATIONS.forEach(n=>n.unread=false);
+  }
   renderNotifPanel();
 }
 
@@ -2995,6 +3068,7 @@ function renderCourseDetail(c){
       };
       logActivity(USERS[S.role].name,'🏆',`Completed course: ${co.title}`);
       saveProgressToSupabase(co.id);
+      renderNotifPanel(); // move overdue/in-progress notif → completed
       setTimeout(()=>openCertificate(
         co.title, USERS[S.role].name,
         new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
@@ -4805,6 +4879,7 @@ async function loadSupabaseData(){
     // Re-render current page with fresh data + progress
     const mainContent = document.getElementById('mainContent');
     if(mainContent) switchRole(currentProfile?.role || S.role);
+    renderNotifPanel(); // refresh bell count with real progress
     console.log('✅ Supabase data loaded');
   } catch(e){
     console.warn('Supabase data load error:', e);
