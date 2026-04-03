@@ -143,8 +143,10 @@
           <div class="breadcrumb" id="pageCrumb">Home / Dashboard</div>
         </div>
       </div>
-      <div class="topbar-right" id="topbarRight">
-        <!-- notification bell -->
+      <!-- page-specific action buttons (replaced per page) -->
+      <div class="topbar-right" id="topbarRight"></div>
+      <!-- persistent: bell + dark mode (never replaced) -->
+      <div style="display:flex;align-items:center;gap:8px;flex-shrink:0">
         <div style="position:relative">
           <div class="notif-bell" id="bellBtn" onclick="toggleNotifPanel()">
             🔔
@@ -158,7 +160,6 @@
             <div id="notifList"></div>
           </div>
         </div>
-        <!-- dark mode toggle -->
         <div class="dark-toggle" onclick="toggleDark()" id="darkBtn" title="Toggle dark mode">🌙</div>
       </div>
     </div>
