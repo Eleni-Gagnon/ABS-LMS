@@ -392,7 +392,7 @@ function renderDashboard(c){
               const allOrdered=CATS.flatMap(cat=>getOrderedCourses(cat.name));
               const myCourses=allOrdered.filter(co=>assignedIds.includes(co.id));
               return myCourses.map(co=>{
-                const pct=S.courseProgress?.[co.id]||0;
+                const pct=getCoursePct(co.id);
                 const status=pct===100?'Done':pct>0?'In Progress':'Not Started';
                 const statusBadge=pct===100?'badge-success':pct>0?'badge-blue':'badge-gray';
                 return `<tr onclick="openLearnerCourse(${co.id})" style="cursor:pointer">
@@ -890,6 +890,13 @@ function filterCourses(search='', cat=''){
   } else {
     noResults.style.display='none';
   }
+}
+
+function getCoursePct(courseId){
+  const mods=(COURSE_MODULES[courseId]||[]).filter(m=>m.status==='published'||!m.status);
+  if(!mods.length) return 0;
+  const done=(S.completedModules?.[courseId]||[]).length;
+  return Math.round(done/mods.length*100);
 }
 
 function courseCardHTML(co){
@@ -2706,7 +2713,7 @@ function renderMyCourses(c){
       </div>
       <div class="grid3">
         ${courses.map(co=>{
-          const pct=S.courseProgress?.[co.id]||0;
+          const pct=getCoursePct(co.id);
           return `<div class="course-card" onclick="openLearnerCourse(${co.id})">
             <div class="course-thumb" style="background:${co.color}">${co.emoji}</div>
             <div class="course-body">
