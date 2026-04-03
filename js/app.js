@@ -300,6 +300,10 @@ function switchRole(role){
 }
 
 function renderNav(){
+  // Role switcher is an admin-only dev tool — hide it for all other roles
+  const rs=document.getElementById('roleSwitcher');
+  if(rs) rs.style.display=S.role==='admin'?'':'none';
+
   const el=document.getElementById('sidebarNav');
   const items=NAV[S.role];
   // track collapsed state
