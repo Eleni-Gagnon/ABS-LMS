@@ -972,6 +972,28 @@ function getCoursePct(courseId){
   return Math.round(done/mods.length*100);
 }
 
+// Cache of all learners' progress loaded from Supabase: email → { courseId: completedModuleIndices[] }
+const LEARNER_PROGRESS_BY_EMAIL = {};
+
+function getPersonCoursePct(email, courseId){
+  const done=(LEARNER_PROGRESS_BY_EMAIL[email]?.[courseId]||[]).length;
+  const mods=(COURSE_MODULES[courseId]||[]).filter(m=>m.status==='published'||!m.status);
+  return mods.length?Math.round(done/mods.length*100):0;
+}
+
+function getPersonOverallPct(learner){
+  const ids=learner.assignedCourses||[];
+  if(!ids.length) return 0;
+  const total=ids.reduce((sum,id)=>{
+    return sum+(COURSE_MODULES[id]||[]).filter(m=>m.status==='published'||!m.status).length;
+  },0);
+  if(!total) return 0;
+  const done=ids.reduce((sum,id)=>{
+    return sum+(LEARNER_PROGRESS_BY_EMAIL[learner.email]?.[id]||[]).length;
+  },0);
+  return Math.round(done/total*100);
+}
+
 function courseCardHTML(co){
   const enrolled=co.enrolled||0;
   const completed=co.completed||0;
@@ -2291,16 +2313,16 @@ function renderPeopleRows(list){
     <td><span class="badge badge-gray">${l.dept}</span></td>
     <td style="font-size:13px;color:var(--text2)">${l.manager}</td>
     <td style="font-size:12px;color:var(--text3)">${l.start}</td>
-    <td style="min-width:130px">
-      <div style="display:flex;align-items:center;gap:8px">
+    <td style="min-width:130px">${(()=>{
+      const pct=getPersonOverallPct(l);
+      return `<div style="display:flex;align-items:center;gap:8px">
         <div class="progress-bar" style="flex:1;margin:0">
-          <div class="progress-fill ${l.prog===100?'green':l.prog>60?'':'amber'}" style="width:${l.prog}%"></div>
+          <div class="progress-fill ${pct===100?'green':pct>60?'':'amber'}" style="width:${pct}%"></div>
         </div>
-        <span style="font-size:11px;color:var(--text2);min-width:28px">${l.prog}%</span>
-      </div>
-      ${l.overdue>0?`<div style="font-size:10px;color:var(--danger);margin-top:2px">${l.overdue} overdue</div>`:''}
-    </td>
-    <td><span class="badge ${l.status==='complete'?'badge-success':l.overdue>0?'badge-danger':'badge-warn'}">${l.status==='complete'?'Complete':l.overdue>0?'Overdue':'Active'}</span></td>
+        <span style="font-size:11px;color:var(--text2);min-width:28px">${pct}%</span>
+      </div>`;
+    })()}</td>
+    <td><span class="badge ${getPersonOverallPct(l)===100?'badge-success':'badge-warn'}">${getPersonOverallPct(l)===100?'Complete':'In Progress'}</span></td>
     <td><span class="badge ${l.account==='active'?'badge-success':'badge-gray'}">${l.account==='active'?'Active':'Inactive'}</span></td>
     <td>
       <button class="btn btn-sm btn-primary" onclick="openPersonModal('${l.name}')">✏️ Edit</button>
@@ -2341,10 +2363,13 @@ function openPersonModal(name){
         <div>
           <div style="font-size:17px;font-weight:600">${l.name}</div>
           <div style="font-size:13px;color:var(--text2)">${l.title} · ${l.dept}</div>
-          <div style="display:flex;gap:6px;margin-top:5px">
-            <span class="badge ${l.account==='active'?'badge-success':'badge-gray'}">${l.account==='active'?'Active':'Inactive'}</span>
-            <span class="badge ${l.status==='complete'?'badge-success':l.overdue>0?'badge-danger':'badge-warn'}">${l.status==='complete'?'All Done':l.overdue>0?l.overdue+' Overdue':'In Progress'}</span>
-          </div>
+          ${(()=>{
+            const pct=getPersonOverallPct(l);
+            return `<div style="display:flex;gap:6px;margin-top:5px">
+              <span class="badge ${l.account==='active'?'badge-success':'badge-gray'}">${l.account==='active'?'Active':'Inactive'}</span>
+              <span class="badge ${pct===100?'badge-success':'badge-warn'}">${pct===100?'All Done':pct+'% Complete'}</span>
+            </div>`;
+          })()}
         </div>
       </div>
       <div style="display:flex;gap:6px">
@@ -2361,26 +2386,32 @@ function openPersonModal(name){
     </div>
 
     <div id="pm-progress">
-      <div class="grid2 section-gap" style="margin-bottom:16px">
-        <div class="metric-card"><div class="metric-label">Overall Progress</div><div class="metric-value">${l.prog}%</div></div>
-        <div class="metric-card"><div class="metric-label">Overdue</div><div class="metric-value" style="color:${l.overdue?'var(--danger)':'var(--text)'}">${l.overdue}</div></div>
-      </div>
-      <div class="card-title">Course Progress</div>
-      ${COURSES.slice(0,5).map((co,i)=>{
-        const pcts=[35,80,0,60,10];
-        return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
-          <div style="font-size:18px">${co.emoji}</div>
-          <div style="flex:1">
-            <div style="font-size:13px;font-weight:500;margin-bottom:3px">${co.title}</div>
-            <div class="progress-bar" style="margin:0"><div class="progress-fill ${pcts[i]===100?'green':''}" style="width:${pcts[i]}%"></div></div>
-          </div>
-          <span style="font-size:12px;color:var(--text2)">${pcts[i]}%</span>
+      ${(()=>{
+        const overallPct=getPersonOverallPct(l);
+        const assignedCourses=COURSES.filter(co=>(l.assignedCourses||[]).includes(co.id));
+        const completedCount=assignedCourses.filter(co=>getPersonCoursePct(l.email,co.id)===100).length;
+        return `
+        <div class="grid2 section-gap" style="margin-bottom:16px">
+          <div class="metric-card"><div class="metric-label">Overall Progress</div><div class="metric-value">${overallPct}%</div></div>
+          <div class="metric-card"><div class="metric-label">Courses Completed</div><div class="metric-value" style="color:var(--success)">${completedCount} / ${assignedCourses.length}</div></div>
+        </div>
+        <div class="card-title">Course Progress</div>
+        ${assignedCourses.map(co=>{
+          const pct=getPersonCoursePct(l.email,co.id);
+          return `<div style="display:flex;align-items:center;gap:10px;margin-bottom:11px">
+            <div style="font-size:18px">${co.emoji}</div>
+            <div style="flex:1">
+              <div style="font-size:13px;font-weight:500;margin-bottom:3px">${co.title}</div>
+              <div class="progress-bar" style="margin:0"><div class="progress-fill ${pct===100?'green':''}" style="width:${pct}%"></div></div>
+            </div>
+            <span style="font-size:12px;color:var(--text2);min-width:32px;text-align:right">${pct}%</span>
+          </div>`;
+        }).join('')}
+        <div style="margin-top:12px;display:flex;gap:8px">
+          <button class="btn btn-sm" onclick="toast('Reminder sent to ${l.name}!')">📧 Send Reminder</button>
+          <button class="btn btn-sm" onclick="toast('Progress report exported.')">↓ Export Report</button>
         </div>`;
-      }).join('')}
-      <div style="margin-top:12px;display:flex;gap:8px">
-        <button class="btn btn-sm" onclick="toast('Reminder sent to ${l.name}!')">📧 Send Reminder</button>
-        <button class="btn btn-sm" onclick="toast('Progress report exported.')">↓ Export Report</button>
-      </div>
+      })()}
     </div>
 
     <div id="pm-profile" style="display:none">
@@ -4871,6 +4902,20 @@ async function loadSupabaseData(){
         account:p.account||'active',
         assignedCourses:p.assigned_courses||[1,2,5,6,7,8,9]
       })));
+    }
+
+    // Load ALL learners' progress for admin People view
+    const { data: allProgress } = await sb.from('learner_progress').select('*');
+    if(allProgress?.length){
+      // Build id→email map from the profiles we just loaded
+      const emailById={};
+      profiles?.forEach(p=>{ if(p.id) emailById[p.id]=p.email; });
+      allProgress.forEach(p=>{
+        const email=emailById[p.user_id];
+        if(!email) return;
+        if(!LEARNER_PROGRESS_BY_EMAIL[email]) LEARNER_PROGRESS_BY_EMAIL[email]={};
+        LEARNER_PROGRESS_BY_EMAIL[email][p.course_id]=p.completed_modules||[];
+      });
     }
 
     // Load learner progress AFTER course data is ready (so module types are known)
