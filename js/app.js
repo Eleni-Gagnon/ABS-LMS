@@ -410,32 +410,76 @@ function renderDashboard(c){
     },0);
     const overallPct=totalModules?Math.round(doneModules/totalModules*100):0;
 
+    // Determine which course to feature
+    const inProgressCourse=assignedCourses.find(co=>{const p=getCoursePct(co.id);return p>0&&p<100;});
+    const nextCourse=assignedCourses.find(co=>getCoursePct(co.id)<100);
+    const featuredCourse=inProgressCourse||nextCourse;
+
+    // Header text varies by state
+    const isNew=overallPct===0;
+    const isDone=overallPct===100&&assignedCourses.length>0;
+    const greeting=isNew?`Welcome to ABS Learning, ${firstName}! 👋`:isDone?`Well done, ${firstName}! 🏆`:`Welcome back, ${firstName}! 👋`;
+    const subtext=isNew?`Your onboarding journey starts here — let's get you set up.`:isDone?`You've completed all your assigned courses.`:`Here's where you left off.`;
+
     c.innerHTML=`
     <div style="margin-bottom:20px">
-      <div style="font-size:22px;font-weight:600">Welcome, ${firstName}! 👋</div>
-      <div style="font-size:13px;color:var(--text2);margin-top:3px">Here's where you left off.</div>
+      <div style="font-size:22px;font-weight:600">${greeting}</div>
+      <div style="font-size:13px;color:var(--text2);margin-top:3px">${subtext}</div>
     </div>
+
+    ${isNew&&featuredCourse?`
+    <!-- Welcome hero for brand new learners -->
+    <div style="background:linear-gradient(135deg,#1a1400 0%,#2a2210 100%);border:1px solid var(--brand-gold);border-radius:var(--radius-lg);padding:28px 28px 24px;margin-bottom:20px;position:relative;overflow:hidden">
+      <div style="position:absolute;top:-20px;right:-20px;font-size:100px;opacity:0.06;pointer-events:none;user-select:none">🎓</div>
+      <div style="font-size:11px;font-weight:600;color:var(--brand-gold);text-transform:uppercase;letter-spacing:0.1em;margin-bottom:10px">Start Here</div>
+      <div style="font-size:17px;font-weight:700;margin-bottom:6px;color:#fff">You have ${assignedCourses.length} courses to complete</div>
+      <div style="font-size:13px;color:#a09d98;line-height:1.6;margin-bottom:20px;max-width:520px">These courses will get you up to speed on everything you need to know — from who we are and how we operate, to your role and what success looks like. We recommend starting in order.</div>
+      <div style="display:flex;align-items:center;gap:12px;padding:12px 14px;background:rgba(0,0,0,0.3);border-radius:var(--radius);border:1px solid rgba(201,162,39,0.3);margin-bottom:16px">
+        <div style="width:38px;height:38px;border-radius:8px;background:${featuredCourse.color};display:flex;align-items:center;justify-content:center;font-size:18px;flex-shrink:0">${featuredCourse.emoji}</div>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:11px;color:var(--brand-gold);font-weight:600;text-transform:uppercase;letter-spacing:0.05em;margin-bottom:2px">First Course</div>
+          <div style="font-size:14px;font-weight:600;color:#fff;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${featuredCourse.title}</div>
+          <div style="font-size:11px;color:#a09d98;margin-top:2px">${featuredCourse.mods} modules · ${featuredCourse.dur}</div>
+        </div>
+      </div>
+      <button class="btn btn-primary" onclick="openLearnerCourse(${featuredCourse.id})" style="font-size:14px;padding:10px 22px;border-radius:8px">Start Your First Course →</button>
+    </div>
+    `:''}
+
+    ${!isNew&&!isDone?`
+    <!-- Continue card for in-progress learners -->
+    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:20px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
+        <div style="font-size:13px;font-weight:600">Overall Progress</div>
+        <div style="font-size:13px;font-weight:600;color:var(--accent)">${overallPct}%</div>
+      </div>
+      <div style="height:10px;background:var(--bg);border-radius:6px;overflow:hidden;width:100%;margin-bottom:8px">
+        <div style="height:100%;border-radius:6px;background:linear-gradient(90deg,var(--brand-gold),#52a83a);width:${overallPct}%;transition:width 0.5s ease"></div>
+      </div>
+      <div style="display:flex;justify-content:space-between;align-items:center">
+        <span style="font-size:11px;color:var(--text3)">${doneModules} of ${totalModules} modules complete</span>
+        ${featuredCourse?`<button class="btn btn-primary btn-sm" onclick="openLearnerCourse(${featuredCourse.id})">Continue: ${featuredCourse.title.length>30?featuredCourse.title.slice(0,30)+'…':featuredCourse.title} →</button>`:''}
+      </div>
+    </div>
+    `:''}
+
+    ${isDone?`
+    <!-- All done celebration -->
+    <div style="background:var(--success-bg);border:1px solid var(--success-border);border-radius:var(--radius-lg);padding:20px 24px;margin-bottom:20px;text-align:center">
+      <div style="font-size:32px;margin-bottom:8px">🏆</div>
+      <div style="font-size:15px;font-weight:700;color:var(--success);margin-bottom:4px">All courses completed!</div>
+      <div style="font-size:13px;color:var(--text2)">You've finished your entire learning path. Check your completed certificates below.</div>
+    </div>
+    `:''}
+
+    ${!isNew?`
     <div class="grid4 section-gap">
       <div class="metric-card"><div class="metric-label">Assigned</div><div class="metric-value">${assignedCourses.length}</div></div>
       <div class="metric-card"><div class="metric-label">Completed</div><div class="metric-value" style="color:var(--success)">${completedCount}</div></div>
       <div class="metric-card"><div class="metric-label">In Progress</div><div class="metric-value" style="color:var(--accent)">${assignedCourses.length-completedCount}</div></div>
       <div class="metric-card"><div class="metric-label">Overall Progress</div><div class="metric-value">${overallPct}%</div></div>
     </div>
-
-    <!-- Full-width overall progress bar -->
-    <div style="background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px 20px;margin-bottom:20px">
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">
-        <div style="font-size:13px;font-weight:600">Overall Progress</div>
-        <div style="font-size:13px;font-weight:600;color:var(--accent)">${overallPct}%</div>
-      </div>
-      <div style="height:12px;background:var(--bg);border-radius:6px;overflow:hidden;width:100%">
-        <div style="height:100%;border-radius:6px;background:linear-gradient(90deg,var(--brand-gold),#52a83a);width:${overallPct}%;transition:width 0.5s ease"></div>
-      </div>
-      <div style="display:flex;justify-content:space-between;margin-top:6px">
-        <span style="font-size:11px;color:var(--text3)">Keep going, ${firstName}!</span>
-        <span style="font-size:11px;color:var(--text3)">${doneModules} of ${totalModules} modules complete</span>
-      </div>
-    </div>
+    `:''}
 
     <!-- Announcements feed -->
     ${(()=>{
