@@ -2984,6 +2984,7 @@ function renderCourseDetail(c){
         manager:LEARNERS.find(l=>l.name===USERS[S.role].name)?.manager||'Manager'
       };
       logActivity(USERS[S.role].name,'🏆',`Completed course: ${co.title}`);
+      saveProgressToSupabase(co.id);
       setTimeout(()=>openCertificate(
         co.title, USERS[S.role].name,
         new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
@@ -3062,6 +3063,7 @@ function renderQuiz(courseId, modIdx){
       if(!S.completedModules) S.completedModules={};
       if(!S.completedModules[courseId]) S.completedModules[courseId]=[];
       if(!S.completedModules[courseId].includes(modIdx)) S.completedModules[courseId].push(modIdx);
+      saveProgressToSupabase(courseId);
     }
     return `<div style="text-align:center;padding:20px 0">
       <div style="font-size:40px;margin-bottom:10px">${passed?'🏆':'📚'}</div>
@@ -4787,7 +4789,10 @@ async function loadSupabaseData(){
       })));
     }
 
-    // Re-render current page with fresh data
+    // Load learner progress AFTER course data is ready (so module types are known)
+    await loadProgressFromSupabase();
+
+    // Re-render current page with fresh data + progress
     const mainContent = document.getElementById('mainContent');
     if(mainContent) switchRole(currentProfile?.role || S.role);
     console.log('✅ Supabase data loaded');
@@ -4809,37 +4814,50 @@ async function saveProgressToSupabase(courseId){
   if(!currentUser) return;
   const completed = S.completedModules?.[courseId] || [];
   const courseDone = !!S.completedCourses?.[courseId];
-  await sb.from('learner_progress').upsert({
+  const { error } = await sb.from('learner_progress').upsert({
     user_id: currentUser.id,
     course_id: courseId,
     completed_modules: completed,
-    quiz_score: S.quiz?.score || 0,
-    quiz_done: S.quiz?.done || false,
     course_completed: courseDone,
     completed_at: courseDone ? new Date().toISOString() : null,
     updated_at: new Date().toISOString()
   }, { onConflict: 'user_id,course_id' });
+  if(error) console.warn('Progress save error:', error);
 }
 
 // ── LOAD PROGRESS FROM SUPABASE ──────────────────────────────────────────
 async function loadProgressFromSupabase(){
   if(!currentUser) return;
-  const { data } = await sb.from('learner_progress').select('*').eq('user_id', currentUser.id);
-  if(data?.length){
-    data.forEach(p=>{
-      if(!S.completedModules) S.completedModules={};
-      S.completedModules[p.course_id] = p.completed_modules || [];
-      if(p.course_completed && !S.completedCourses?.[p.course_id]){
-        if(!S.completedCourses) S.completedCourses={};
-        const course = COURSES.find(c=>c.id===p.course_id);
-        if(course) S.completedCourses[p.course_id] = {
-          title:course.title, emoji:course.emoji,
-          date:new Date(p.completed_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
-          manager: currentProfile?.manager || 'Manager'
-        };
+  const { data, error } = await sb.from('learner_progress').select('*').eq('user_id', currentUser.id);
+  if(error){ console.warn('Progress load error:', error); return; }
+  if(!data?.length) return;
+
+  data.forEach(p=>{
+    if(!S.completedModules) S.completedModules={};
+    S.completedModules[p.course_id] = p.completed_modules || [];
+
+    // Restore quiz states: any completed module that is a quiz type → mark as done
+    const mods = COURSE_MODULES[p.course_id] || [];
+    (p.completed_modules || []).forEach(idx=>{
+      if(mods[idx]?.type === 'quiz'){
+        const key = p.course_id + '_' + idx;
+        S.quizStates[key] = {q:0, sel:null, answered:false, score:0, done:true, ready:true};
       }
     });
-  }
+
+    // Restore completed courses
+    if(p.course_completed && !S.completedCourses?.[p.course_id]){
+      if(!S.completedCourses) S.completedCourses={};
+      const course = COURSES.find(c=>c.id===p.course_id);
+      if(course) S.completedCourses[p.course_id] = {
+        title:course.title, emoji:course.emoji,
+        date: p.completed_at
+          ? new Date(p.completed_at).toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'})
+          : new Date().toLocaleDateString('en-US',{month:'short',day:'numeric',year:'numeric'}),
+        manager: currentProfile?.manager || 'Manager'
+      };
+    }
+  });
 }
 
 // ── INIT ON PAGE LOAD ────────────────────────────────────────────────────
